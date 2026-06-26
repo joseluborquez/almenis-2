@@ -151,16 +151,16 @@ export function Dashboard({ usuario }: Props) {
   return (
     <Layout usuario={usuario}>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">
-              {usuario.rol === 'admin' ? 'Cierre de Hoy' : `Mi Cierre — ${usuario.nombre_completo}`}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 truncate">
+              {usuario.rol === 'admin' ? 'Cierre de Hoy' : 'Mi Cierre'}
             </h1>
-            <p className="text-slate-500 text-sm mt-1 capitalize">{fechaFormateada}</p>
+            <p className="text-slate-500 text-sm mt-0.5 capitalize">{fechaFormateada}</p>
           </div>
           {usuario.rol === 'admin' && !cierreHoy && !loading && (
-            <a href="/subir" className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              Generar cierre →
+            <a href="/subir" className="text-sm px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shrink-0">
+              Generar →
             </a>
           )}
         </div>

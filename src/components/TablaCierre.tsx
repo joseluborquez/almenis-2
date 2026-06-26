@@ -70,12 +70,12 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar }: TarjetaProps) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-start justify-between">
-        <div>
-          <h3 className="font-semibold text-slate-800">{cierre.profesional}</h3>
-          <div className="flex gap-4 mt-1">
+      <div className="px-4 sm:px-5 py-3 sm:py-4 bg-slate-50 border-b border-slate-200 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-slate-800 text-sm sm:text-base truncate">{cierre.profesional}</h3>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
             <span className="text-xs text-slate-500">
-              {cierre.total_atenciones} agendados · <span className="text-green-600 font-medium">{atendidos} atendidos</span>
+              {cierre.total_atenciones} agend. · <span className="text-green-600 font-medium">{atendidos} atend.</span>
             </span>
             <span className="text-xs font-semibold text-blue-700">{formatPesos(total_recaudado)}</span>
           </div>
@@ -83,25 +83,25 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar }: TarjetaProps) {
         {isAdmin && !editando && (
           <button
             onClick={() => setEditando(true)}
-            className="text-xs px-3 py-1 rounded-lg border border-slate-300 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors"
+            className="text-xs px-2.5 py-1 rounded-lg border border-slate-300 text-slate-500 hover:bg-white hover:text-slate-700 transition-colors shrink-0"
           >
             Editar
           </button>
         )}
         {isAdmin && editando && (
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 shrink-0">
             <button
               onClick={handleCancelar}
-              className="text-xs px-3 py-1 rounded-lg border border-slate-300 text-slate-500 hover:bg-white transition-colors"
+              className="text-xs px-2.5 py-1 rounded-lg border border-slate-300 text-slate-500 hover:bg-white transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleGuardar}
               disabled={guardando}
-              className="text-xs px-3 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-60"
+              className="text-xs px-2.5 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
-              {guardando ? 'Guardando...' : 'Guardar'}
+              {guardando ? '...' : 'Guardar'}
             </button>
           </div>
         )}
@@ -114,52 +114,54 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar }: TarjetaProps) {
       )}
 
       {detalle.length === 0 ? (
-        <p className="px-5 py-4 text-sm text-slate-400 italic">Sin atenciones registradas</p>
+        <p className="px-4 py-4 text-sm text-slate-400 italic">Sin atenciones registradas</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b border-slate-100">
-              <th className="px-5 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Servicio</th>
-              <th className="px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide text-center">Cant.</th>
-              <th className="px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Estado</th>
-              <th className="px-5 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide text-right">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detalle.map((item, i) => (
-              <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
-                <td className="px-5 py-2.5 text-slate-700">{item.tratamiento}</td>
-                <td className="px-3 py-2.5 text-center text-slate-600">{item.cantidad}</td>
-                <td className="px-3 py-2.5">
-                  {editando ? (
-                    <select
-                      value={item.estado}
-                      onChange={e => cambiarEstado(i, e.target.value)}
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer focus:ring-1 focus:ring-blue-400 outline-none
-                        ${item.estado === 'Atendido' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}
-                    >
-                      {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  ) : (
-                    <EstadoBadge estado={item.estado} />
-                  )}
-                </td>
-                <td className="px-5 py-2.5 text-right font-medium text-slate-800">
-                  {item.valor > 0 && item.estado === 'Atendido'
-                    ? formatPesos(item.valor * item.cantidad)
-                    : <span className="text-slate-400">—</span>
-                  }
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[340px]">
+            <thead>
+              <tr className="text-left border-b border-slate-100">
+                <th className="px-4 sm:px-5 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Servicio</th>
+                <th className="px-2 sm:px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide text-center w-10">Cant.</th>
+                <th className="px-2 sm:px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Estado</th>
+                <th className="px-4 sm:px-5 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide text-right">Valor</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="bg-blue-50">
-              <td className="px-5 py-2.5 text-sm font-semibold text-blue-800" colSpan={3}>Total recaudado</td>
-              <td className="px-5 py-2.5 text-right font-bold text-blue-800">{formatPesos(total_recaudado)}</td>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              {detalle.map((item, i) => (
+                <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <td className="px-4 sm:px-5 py-2 sm:py-2.5 text-slate-700 text-xs sm:text-sm">{item.tratamiento}</td>
+                  <td className="px-2 sm:px-3 py-2 sm:py-2.5 text-center text-slate-600 text-xs sm:text-sm">{item.cantidad}</td>
+                  <td className="px-2 sm:px-3 py-2 sm:py-2.5">
+                    {editando ? (
+                      <select
+                        value={item.estado}
+                        onChange={e => cambiarEstado(i, e.target.value)}
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer focus:ring-1 focus:ring-blue-400 outline-none
+                          ${item.estado === 'Atendido' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}
+                      >
+                        {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    ) : (
+                      <EstadoBadge estado={item.estado} />
+                    )}
+                  </td>
+                  <td className="px-4 sm:px-5 py-2 sm:py-2.5 text-right font-medium text-slate-800 text-xs sm:text-sm whitespace-nowrap">
+                    {item.valor > 0 && item.estado === 'Atendido'
+                      ? formatPesos(item.valor * item.cantidad)
+                      : <span className="text-slate-400">—</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-blue-50">
+                <td className="px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold text-blue-800" colSpan={3}>Total recaudado</td>
+                <td className="px-4 sm:px-5 py-2.5 text-right font-bold text-blue-800 text-xs sm:text-sm whitespace-nowrap">{formatPesos(total_recaudado)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
     </div>
   )
@@ -184,18 +186,18 @@ export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, o
   return (
     <div className="space-y-6">
       {!soloParaProfesional && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Agendados</p>
-            <p className="text-3xl font-bold text-slate-800">{resultado.cierre_general.total_atenciones}</p>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-5">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1 leading-tight">Agendados</p>
+            <p className="text-2xl sm:text-3xl font-bold text-slate-800">{resultado.cierre_general.total_atenciones}</p>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Atendidos</p>
-            <p className="text-3xl font-bold text-green-600">{totalAtendidos}</p>
+          <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-5">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-1 leading-tight">Atendidos</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">{totalAtendidos}</p>
           </div>
-          <div className="bg-blue-600 rounded-xl p-5">
-            <p className="text-xs text-blue-200 uppercase tracking-wide mb-1">Total Recaudado</p>
-            <p className="text-3xl font-bold text-white">{formatPesos(totalRecaudado)}</p>
+          <div className="bg-blue-600 rounded-xl p-3 sm:p-5">
+            <p className="text-xs text-blue-200 uppercase tracking-wide mb-1 leading-tight">Recaudado</p>
+            <p className="text-lg sm:text-3xl font-bold text-white">{formatPesos(totalRecaudado)}</p>
           </div>
         </div>
       )}
