@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { logout } from '../lib/auth'
 import type { Usuario } from '../types'
@@ -11,8 +11,6 @@ interface Props {
 export function Layout({ usuario, children }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [menuAbierto, setMenuAbierto] = useState(false)
-
   const handleLogout = async () => {
     await logout()
     navigate('/login')
