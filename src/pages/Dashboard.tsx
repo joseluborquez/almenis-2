@@ -68,18 +68,28 @@ export function Dashboard({ usuario }: Props) {
         if (e && e.code !== 'PGRST116') throw e
         setCierreHoy(data?.datos_json || null)
       } else {
-        const { data, error: e } = await supabase
+        // Puede haber múltiples filas para el mismo profesional (nombres distintos en el PDF)
+        const { data: filas, error: e } = await supabase
           .from('cierres_profesional')
           .select('*')
           .eq('fecha', hoy)
           .eq('profesional_id', usuario.id)
-          .single()
-        if (e && e.code !== 'PGRST116') throw e
-        if (data) {
+        if (e) throw e
+        if (filas && filas.length > 0) {
+          const detalle = filas.flatMap(f => f.detalle_json ?? [])
+          const atendidos = filas.reduce((s, f) => s + (f.atendidos ?? 0), 0)
+          const total_recaudado = filas.reduce((s, f) => s + (f.total_recaudado ?? 0), 0)
+          const total_atenciones = filas.reduce((s, f) => s + (f.total_atenciones ?? 0), 0)
           setCierreHoy({
             fecha: hoy,
-            cierre_general: { total_atenciones: data.total_atenciones, atendidos: data.atendidos, total_recaudado: data.total_recaudado },
-            cierre_por_profesional: [{ profesional: data.profesional_nombre, total_atenciones: data.total_atenciones, atendidos: data.atendidos, total_recaudado: data.total_recaudado, detalle: data.detalle_json }],
+            cierre_general: { total_atenciones, atendidos, total_recaudado },
+            cierre_por_profesional: [{
+              profesional: usuario.nombre_completo,
+              total_atenciones,
+              atendidos,
+              total_recaudado,
+              detalle,
+            }],
             items_sin_registro: [],
           })
         }

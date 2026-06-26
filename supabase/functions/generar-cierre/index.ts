@@ -152,7 +152,7 @@ function generarCierre(atenciones: AtencionAnonimizada[], catalogo: Tratamiento[
 
 // ── Guardar en Supabase ──────────────────────────────────────────────────────
 
-async function guardarCierre(supabase: any, resultado: any, fecha: string, userId: string) {
+async function guardarCierre(supabase: any, supabaseAdmin: any, resultado: any, fecha: string, userId: string) {
   const { data: cierreDiario, error: e1 } = await supabase
     .from('cierres_diarios')
     .upsert({
@@ -169,18 +169,44 @@ async function guardarCierre(supabase: any, resultado: any, fecha: string, userI
 
   await supabase.from('cierres_profesional').delete().eq('cierre_diario_id', cierreDiario.id)
 
-  const profesionalNombres = resultado.cierre_por_profesional.map((c: any) => c.profesional)
-  const { data: usuarios } = await supabase
+  // Cargar todos los profesionales para hacer matching fuzzy
+  const { data: usuarios } = await supabaseAdmin
     .from('usuarios')
     .select('id, profesional_nombre')
-    .in('profesional_nombre', profesionalNombres)
+    .eq('rol', 'profesional')
 
-  const nombreAId = new Map(usuarios?.map((u: any) => [u.profesional_nombre, u.id]) || [])
+  function matchProfesionalId(pdfNombre: string): string | null {
+    if (!usuarios) return null
+    const norm = normalizar(pdfNombre)
+    // 1. Exacto
+    const exacto = usuarios.find((u: any) => normalizar(u.profesional_nombre) === norm)
+    if (exacto) return exacto.id
+    // 2. Contiene (el nombre del PDF está dentro del nombre completo o viceversa)
+    const contiene = usuarios.find((u: any) => {
+      const un = normalizar(u.profesional_nombre)
+      return un.includes(norm) || norm.includes(un)
+    })
+    if (contiene) return contiene.id
+    // 3. Overlap de palabras clave (≥2 palabras en común)
+    const palabrasNombre = palabrasClave(pdfNombre)
+    let mejorId: string | null = null
+    let mejorScore = 0
+    for (const u of usuarios as any[]) {
+      const palabrasU = palabrasClave(u.profesional_nombre)
+      const comunes = palabrasNombre.filter((p: string) => palabrasU.includes(p))
+      const score = comunes.length / Math.max(palabrasNombre.length, palabrasU.length)
+      if (comunes.length >= 1 && score > mejorScore) {
+        mejorScore = score
+        mejorId = u.id
+      }
+    }
+    return mejorId
+  }
 
   const filas = resultado.cierre_por_profesional.map((cp: any) => ({
     cierre_diario_id: cierreDiario.id,
     profesional_nombre: cp.profesional,
-    profesional_id: nombreAId.get(cp.profesional) || null,
+    profesional_id: matchProfesionalId(cp.profesional),
     total_atenciones: cp.total_atenciones,
     atendidos: cp.atendidos,
     total_recaudado: cp.total_recaudado,
@@ -254,7 +280,7 @@ serve(async (req) => {
 
     const resultado = generarCierre(atenciones, catalogo ?? [], fecha)
 
-    await guardarCierre(supabase, resultado, fecha, user.id)
+    await guardarCierre(supabase, supabaseAdmin, resultado, fecha, user.id)
 
     return new Response(JSON.stringify({ resultado }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
