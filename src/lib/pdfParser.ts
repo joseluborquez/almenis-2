@@ -37,40 +37,39 @@ function detectarColumna(x: number): keyof typeof COL_BOUNDARIES | null {
 
 interface FilaRaw {
   y: number
+  maxY: number  // última Y añadida, para chain-merging de texto que hace wrap
   celdas: Partial<Record<keyof typeof COL_BOUNDARIES, string>>
 }
 
-function agruparPorFila(items: Array<{ x: number; y: number; str: string }>): FilaRaw[] {
-  const filaMap = new Map<number, FilaRaw>()
-  const Y_TOLERANCE = 4
+// Tolerancia ajustada al PDF de Reservo: líneas dentro de una celda con wrap
+// están ~11px separadas; filas distintas están ~19px+ separadas.
+const Y_TOLERANCE = 15
 
-  for (const item of items) {
+function agruparPorFila(items: Array<{ x: number; y: number; str: string }>): FilaRaw[] {
+  // Ordenar top-down para que el chain-merging funcione correctamente
+  const sorted = [...items].sort((a, b) => a.y - b.y)
+  const filas: FilaRaw[] = []
+
+  for (const item of sorted) {
     const texto = item.str.trim()
     if (!texto) continue
 
     const col = detectarColumna(item.x)
     if (!col) continue
 
-    // buscar fila existente cercana en Y
-    let filaY: number | null = null
-    for (const y of filaMap.keys()) {
-      if (Math.abs(y - item.y) <= Y_TOLERANCE) {
-        filaY = y
-        break
-      }
-    }
+    // Buscar fila existente cuya maxY esté dentro de la tolerancia
+    const fila = filas.find(f => Math.abs(f.maxY - item.y) <= Y_TOLERANCE)
 
-    if (filaY === null) {
-      filaY = item.y
-      filaMap.set(filaY, { y: filaY, celdas: {} })
+    if (!fila) {
+      filas.push({ y: item.y, maxY: item.y, celdas: { [col]: texto } })
+    } else {
+      if (item.y > fila.maxY) fila.maxY = item.y
+      const prev = fila.celdas[col] || ''
+      fila.celdas[col] = prev ? `${prev} ${texto}` : texto
     }
-
-    const fila = filaMap.get(filaY)!
-    const prev = fila.celdas[col] || ''
-    fila.celdas[col] = prev ? `${prev} ${texto}` : texto
   }
 
-  return Array.from(filaMap.values()).sort((a, b) => b.y - a.y) // PDF Y crece hacia abajo
+  return filas.sort((a, b) => a.y - b.y)
 }
 
 function limpiarTratamientos(raw: string): string[] {
