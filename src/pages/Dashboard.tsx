@@ -16,6 +16,7 @@ const CIERRE_DEMO: ResultadoCierre = {
       profesional: 'Dra. Magdalena Sepúlveda Suárez',
       total_atenciones: 2, atendidos: 2, total_recaudado: 30260,
       detalle: [{ tratamiento: 'Consulta Medicina General Fonasa', valor: 15130, estado: 'Atendido', cantidad: 2 }],
+      aceptado: true, aceptado_at: new Date().toISOString(), comentario_profesional: null,
     },
     {
       profesional: 'EXAMENES OTORRINO',
@@ -26,6 +27,7 @@ const CIERRE_DEMO: ResultadoCierre = {
         { tratamiento: 'Evaluación rehabilitación vestibular', valor: 30000, estado: 'Confirmado', cantidad: 1 },
         { tratamiento: 'Control de audífono', valor: 0, estado: 'No Confirmado', cantidad: 1 },
       ],
+      aceptado: true, aceptado_at: new Date().toISOString(), comentario_profesional: 'El valor del VIII Par no coincide con la tarifa acordada.',
     },
     {
       profesional: 'Flga Javiera Medina',
@@ -34,6 +36,7 @@ const CIERRE_DEMO: ResultadoCierre = {
         { tratamiento: 'Evaluación Fonoaudiología Infantil', valor: 28000, estado: 'Atendido', cantidad: 1 },
         { tratamiento: 'Fonoaudiología Infantil Fonasa', valor: 18340, estado: 'Confirmado', cantidad: 1 },
       ],
+      aceptado: false, aceptado_at: null, comentario_profesional: null,
     },
   ],
   items_sin_registro: ['Fonoaudiología Infantil Fonasa'],
@@ -60,26 +63,49 @@ export function Dashboard({ usuario }: Props) {
     setError('')
     try {
       if (usuario.rol === 'admin') {
-        const { data, error: e } = await supabase
-          .from('cierres_diarios')
-          .select('datos_json')
-          .eq('fecha', hoy)
-          .single()
-        if (e && e.code !== 'PGRST116') throw e
-        setCierreHoy(data?.datos_json || null)
+        const [{ data: cierreData, error: e1 }, { data: aceptaciones }] = await Promise.all([
+          supabase.from('cierres_diarios').select('datos_json').eq('fecha', hoy).single(),
+          supabase.from('cierres_profesional')
+            .select('profesional_nombre, aceptado, aceptado_at, comentario_profesional')
+            .eq('fecha', hoy),
+        ])
+
+        if (e1 && e1.code !== 'PGRST116') throw e1
+
+        if (cierreData?.datos_json) {
+          const resultado: ResultadoCierre = cierreData.datos_json
+          if (aceptaciones && aceptaciones.length > 0) {
+            resultado.cierre_por_profesional = resultado.cierre_por_profesional.map(p => {
+              const acept = aceptaciones.find(a => a.profesional_nombre === p.profesional)
+              return acept
+                ? { ...p, aceptado: acept.aceptado, aceptado_at: acept.aceptado_at, comentario_profesional: acept.comentario_profesional }
+                : { ...p, aceptado: false, aceptado_at: null, comentario_profesional: null }
+            })
+          }
+          setCierreHoy(resultado)
+        } else {
+          setCierreHoy(null)
+        }
       } else {
-        // Puede haber múltiples filas para el mismo profesional (nombres distintos en el PDF)
         const { data: filas, error: e } = await supabase
           .from('cierres_profesional')
           .select('*')
           .eq('fecha', hoy)
           .eq('profesional_id', usuario.id)
+
         if (e) throw e
+
         if (filas && filas.length > 0) {
           const detalle = filas.flatMap(f => f.detalle_json ?? [])
           const atendidos = filas.reduce((s, f) => s + (f.atendidos ?? 0), 0)
           const total_recaudado = filas.reduce((s, f) => s + (f.total_recaudado ?? 0), 0)
           const total_atenciones = filas.reduce((s, f) => s + (f.total_atenciones ?? 0), 0)
+
+          // Aceptación consolidada: aceptado solo si TODAS las filas están aceptadas
+          const aceptado = filas.every(f => f.aceptado === true)
+          const aceptado_at = filas.map(f => f.aceptado_at).filter(Boolean).sort().pop() ?? null
+          const comentario_profesional = filas.map(f => f.comentario_profesional).filter(Boolean).join(' | ') || null
+
           setCierreHoy({
             fecha: hoy,
             cierre_general: { total_atenciones, atendidos, total_recaudado },
@@ -89,6 +115,9 @@ export function Dashboard({ usuario }: Props) {
               atendidos,
               total_recaudado,
               detalle,
+              aceptado,
+              aceptado_at,
+              comentario_profesional,
             }],
             items_sin_registro: [],
           })
@@ -104,7 +133,6 @@ export function Dashboard({ usuario }: Props) {
   const actualizarProfesional = async (nombreProf: string, actualizado: CierreProfesional) => {
     if (!cierreHoy) return
 
-    // Reconstruir resultado con el profesional actualizado
     const nuevoProfesionales = cierreHoy.cierre_por_profesional.map(p =>
       p.profesional === nombreProf ? actualizado : p
     )
@@ -118,7 +146,6 @@ export function Dashboard({ usuario }: Props) {
       },
     }
 
-    // Guardar en Supabase directamente (admin tiene RLS)
     const { error: e1 } = await supabase
       .from('cierres_diarios')
       .update({
@@ -142,6 +169,32 @@ export function Dashboard({ usuario }: Props) {
     if (e2) throw new Error(e2.message)
 
     setCierreHoy(nuevoResultado)
+  }
+
+  const aceptarCierre = async (_profesional: string, comentario?: string) => {
+    const ahora = new Date().toISOString()
+
+    const { error: e } = await supabase
+      .from('cierres_profesional')
+      .update({
+        aceptado: true,
+        aceptado_at: ahora,
+        comentario_profesional: comentario ?? null,
+      })
+      .eq('fecha', hoy)
+      .eq('profesional_id', usuario.id)
+
+    if (e) throw new Error(e.message)
+
+    setCierreHoy(prev => prev ? {
+      ...prev,
+      cierre_por_profesional: prev.cierre_por_profesional.map(p => ({
+        ...p,
+        aceptado: true,
+        aceptado_at: ahora,
+        comentario_profesional: comentario ?? null,
+      })),
+    } : null)
   }
 
   const fechaFormateada = new Date(hoy + 'T12:00:00').toLocaleDateString('es-CL', {
@@ -200,6 +253,7 @@ export function Dashboard({ usuario }: Props) {
             soloParaProfesional={usuario.rol === 'profesional' ? usuario.profesional_nombre || undefined : undefined}
             isAdmin={usuario.rol === 'admin'}
             onActualizarProfesional={actualizarProfesional}
+            onAceptarCierre={usuario.rol === 'profesional' ? aceptarCierre : undefined}
           />
         )}
       </div>

@@ -26,6 +26,9 @@ export interface CierreProfesional {
   atendidos: number
   total_recaudado: number
   detalle: DetalleItem[]
+  aceptado?: boolean
+  aceptado_at?: string | null
+  comentario_profesional?: string | null
 }
 
 export interface CierreGeneral {
@@ -69,4 +72,7 @@ export interface CierreProfesionalDB {
   total_recaudado: number
   detalle_json: DetalleItem[]
   fecha: string
+  aceptado: boolean
+  aceptado_at: string | null
+  comentario_profesional: string | null
 }

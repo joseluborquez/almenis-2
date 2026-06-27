@@ -7,6 +7,12 @@ function formatPesos(valor: number): string {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(valor)
 }
 
+function formatFechaHora(iso: string): string {
+  return new Date(iso).toLocaleString('es-CL', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  })
+}
+
 function recalcularProfesional(detalle: DetalleItem[]): Pick<CierreProfesional, 'atendidos' | 'total_recaudado'> {
   const atendidos = detalle.filter(d => d.estado === 'Atendido').reduce((s, d) => s + d.cantidad, 0)
   const total_recaudado = detalle.filter(d => d.estado === 'Atendido').reduce((s, d) => s + d.valor * d.cantidad, 0)
@@ -30,17 +36,45 @@ function EstadoBadge({ estado }: { estado: string }) {
   )
 }
 
+function AceptacionBadge({ aceptado, comentario }: { aceptado: boolean; comentario?: string | null }) {
+  if (!aceptado) {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-400">
+        Pendiente
+      </span>
+    )
+  }
+  if (comentario) {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">
+        Con observación
+      </span>
+    )
+  }
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
+      ✓ Aceptado
+    </span>
+  )
+}
+
 interface TarjetaProps {
   cierre: CierreProfesional
   isAdmin: boolean
   onGuardar: (actualizado: CierreProfesional) => Promise<void>
+  onAceptar?: (comentario?: string) => Promise<void>
 }
 
-function TarjetaProfesional({ cierre, isAdmin, onGuardar }: TarjetaProps) {
+function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaProps) {
   const [editando, setEditando] = useState(false)
   const [detalle, setDetalle] = useState<DetalleItem[]>(cierre.detalle)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
+
+  const [mostrarObservacion, setMostrarObservacion] = useState(false)
+  const [comentarioLocal, setComentarioLocal] = useState('')
+  const [aceptando, setAceptando] = useState(false)
+  const [errorAceptar, setErrorAceptar] = useState('')
 
   const { atendidos, total_recaudado } = recalcularProfesional(detalle)
 
@@ -67,17 +101,35 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar }: TarjetaProps) {
     setError('')
   }
 
+  const handleAceptar = async (comentario?: string) => {
+    if (!onAceptar) return
+    setAceptando(true)
+    setErrorAceptar('')
+    try {
+      await onAceptar(comentario)
+      setMostrarObservacion(false)
+      setComentarioLocal('')
+    } catch (e: any) {
+      setErrorAceptar(e.message)
+    } finally {
+      setAceptando(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       {/* Header */}
       <div className="px-4 sm:px-5 py-3 sm:py-4 bg-slate-50 border-b border-slate-200 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-semibold text-slate-800 text-sm sm:text-base truncate">{cierre.profesional}</h3>
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 items-center">
             <span className="text-xs text-slate-500">
               {cierre.total_atenciones} agend. · <span className="text-green-600 font-medium">{atendidos} atend.</span>
             </span>
             <span className="text-xs font-semibold text-blue-700">{formatPesos(total_recaudado)}</span>
+            {isAdmin && cierre.aceptado !== undefined && (
+              <AceptacionBadge aceptado={cierre.aceptado} comentario={cierre.comentario_profesional} />
+            )}
           </div>
         </div>
         {isAdmin && !editando && (
@@ -163,6 +215,87 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar }: TarjetaProps) {
           </table>
         </div>
       )}
+
+      {/* Sección de aceptación — solo visible al profesional cuando se pasa onAceptar */}
+      {onAceptar && (
+        <div className="px-4 sm:px-5 py-3 border-t border-slate-100">
+          {cierre.aceptado ? (
+            /* Estado: ya aceptado */
+            <div className={`flex items-start gap-2 text-sm ${cierre.comentario_profesional ? 'text-amber-700' : 'text-green-700'}`}>
+              <span className="mt-0.5 text-base leading-none">{cierre.comentario_profesional ? '⚠' : '✓'}</span>
+              <div>
+                <span className="font-medium">
+                  {cierre.comentario_profesional ? 'Cierre aceptado con observación' : 'Cierre aceptado'}
+                </span>
+                {cierre.aceptado_at && (
+                  <span className="text-xs ml-2 opacity-60">{formatFechaHora(cierre.aceptado_at)}</span>
+                )}
+                {cierre.comentario_profesional && (
+                  <p className="text-xs mt-1 opacity-80 italic">"{cierre.comentario_profesional}"</p>
+                )}
+              </div>
+            </div>
+          ) : mostrarObservacion ? (
+            /* Estado: escribiendo observación */
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-slate-600">Describe la irregularidad:</p>
+              <textarea
+                value={comentarioLocal}
+                onChange={e => setComentarioLocal(e.target.value)}
+                placeholder="Ej: El valor de la consulta no coincide con lo acordado..."
+                rows={3}
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent resize-none"
+              />
+              {errorAceptar && <p className="text-xs text-red-600">{errorAceptar}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setMostrarObservacion(false); setComentarioLocal(''); setErrorAceptar('') }}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleAceptar(comentarioLocal.trim() || undefined)}
+                  disabled={aceptando || !comentarioLocal.trim()}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors disabled:opacity-50"
+                >
+                  {aceptando ? 'Enviando...' : 'Enviar observación'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Estado: pendiente de aceptar */
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-slate-500 mr-1">¿Los montos de tu cierre son correctos?</p>
+              {errorAceptar && <p className="text-xs text-red-600 w-full">{errorAceptar}</p>}
+              <button
+                onClick={() => handleAceptar()}
+                disabled={aceptando}
+                className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+              >
+                {aceptando ? 'Guardando...' : '✓ Aceptar cierre'}
+              </button>
+              <button
+                onClick={() => setMostrarObservacion(true)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50 transition-colors"
+              >
+                Tengo una observación
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Vista admin: mostrar comentario del profesional si existe */}
+      {isAdmin && cierre.aceptado && cierre.comentario_profesional && (
+        <div className="px-4 sm:px-5 py-3 border-t border-amber-100 bg-amber-50">
+          <p className="text-xs font-medium text-amber-800 mb-0.5">Observación del profesional:</p>
+          <p className="text-xs text-amber-700 italic">"{cierre.comentario_profesional}"</p>
+          {cierre.aceptado_at && (
+            <p className="text-xs text-amber-500 mt-0.5">{formatFechaHora(cierre.aceptado_at)}</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -172,14 +305,14 @@ interface Props {
   soloParaProfesional?: string
   isAdmin?: boolean
   onActualizarProfesional?: (profesional: string, actualizado: CierreProfesional) => Promise<void>
+  onAceptarCierre?: (profesional: string, comentario?: string) => Promise<void>
 }
 
-export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, onActualizarProfesional }: Props) {
+export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, onActualizarProfesional, onAceptarCierre }: Props) {
   const cierres = soloParaProfesional
     ? resultado.cierre_por_profesional.filter(c => c.profesional === soloParaProfesional)
     : resultado.cierre_por_profesional
 
-  // Totales generales recalculados desde las tarjetas locales
   const totalAtendidos = resultado.cierre_por_profesional.reduce((s, c) => s + c.atendidos, 0)
   const totalRecaudado = resultado.cierre_por_profesional.reduce((s, c) => s + c.total_recaudado, 0)
 
@@ -225,6 +358,7 @@ export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, o
             cierre={cierre}
             isAdmin={isAdmin}
             onGuardar={actualizado => onActualizarProfesional?.(cierre.profesional, actualizado) ?? Promise.resolve()}
+            onAceptar={onAceptarCierre ? (comentario) => onAceptarCierre(cierre.profesional, comentario) : undefined}
           />
         ))}
       </div>
