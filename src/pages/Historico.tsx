@@ -156,42 +156,81 @@ export function Historico({ usuario }: Props) {
         )}
 
         {!loading && !error && registros.length > 0 && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Fecha</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Agendados</th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Atendidos</th>
-                  <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Recaudado</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {registros.map((r, i) => {
-                  const fechaF = new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-CL', {
-                    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
-                  })
-                  return (
-                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="px-6 py-3.5 text-slate-700 font-medium capitalize">{fechaF}</td>
-                      <td className="px-4 py-3.5 text-center text-slate-600">{r.total_atenciones}</td>
-                      <td className="px-4 py-3.5 text-center text-green-600 font-medium">{r.atendidos}</td>
-                      <td className="px-6 py-3.5 text-right font-semibold text-slate-800">{formatPesos(r.total_recaudado)}</td>
-                      <td className="px-4 py-3.5 text-right">
-                        <button
-                          onClick={() => verDetalle(r)}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                        >
-                          Ver detalle →
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Cards en mobile */}
+            <div className="sm:hidden space-y-3">
+              {registros.map((r, i) => {
+                const fechaF = new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-CL', {
+                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                })
+                return (
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 px-4 py-4">
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <p className="text-sm font-semibold text-slate-700 capitalize leading-tight">{fechaF}</p>
+                      <button
+                        onClick={() => verDetalle(r)}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0"
+                      >
+                        Ver detalle →
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Agendados</p>
+                        <p className="text-base font-medium text-slate-700">{r.total_atenciones}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Atendidos</p>
+                        <p className="text-base font-medium text-green-600">{r.atendidos}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase tracking-wide mb-0.5">Recaudado</p>
+                        <p className="text-base font-semibold text-slate-800">{formatPesos(r.total_recaudado)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Tabla en tablet/desktop */}
+            <div className="hidden sm:block bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Fecha</th>
+                    <th className="text-center px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Agendados</th>
+                    <th className="text-center px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Atendidos</th>
+                    <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Recaudado</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registros.map((r, i) => {
+                    const fechaF = new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-CL', {
+                      weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
+                    })
+                    return (
+                      <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="px-6 py-3.5 text-slate-700 font-medium capitalize">{fechaF}</td>
+                        <td className="px-4 py-3.5 text-center text-slate-600">{r.total_atenciones}</td>
+                        <td className="px-4 py-3.5 text-center text-green-600 font-medium">{r.atendidos}</td>
+                        <td className="px-6 py-3.5 text-right font-semibold text-slate-800">{formatPesos(r.total_recaudado)}</td>
+                        <td className="px-4 py-3.5 text-right">
+                          <button
+                            onClick={() => verDetalle(r)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            Ver detalle →
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </Layout>
