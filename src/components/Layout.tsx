@@ -20,6 +20,7 @@ export function Layout({ usuario, children }: Props) {
     { label: 'Subir PDF', path: '/subir', icon: '↑' },
     { label: 'Cierre de Hoy', path: '/dashboard', icon: '◎' },
     { label: 'Histórico', path: '/historico', icon: '☰' },
+    { label: 'Tratamientos', path: '/tratamientos', icon: '♦' },
   ]
   const navProfesional = [
     { label: 'Mi Cierre', path: '/dashboard', icon: '◎' },
