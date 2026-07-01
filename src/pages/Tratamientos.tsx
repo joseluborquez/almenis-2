@@ -199,7 +199,11 @@ function ModalPlanilla({ onSubir, onCerrar }: ModalPlanillaProps) {
     setSubiendo(true)
     setError('')
     try {
-      await onSubir(validas)
+      // No pasar el objeto FilaPrevia tal cual: aunque error sea undefined
+      // en las filas válidas, la key sigue presente en el objeto y
+      // supabase-js la incluye en el parámetro `columns` del upsert,
+      // que Postgres rechaza por no existir en la tabla.
+      await onSubir(validas.map(({ id, nombre, categoria, valor, gratuito }) => ({ id, nombre, categoria, valor, gratuito })))
     } catch (err: any) {
       setError(err.message)
     } finally {
