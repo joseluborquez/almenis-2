@@ -156,13 +156,24 @@ function ModalPlanilla({ onSubir, onCerrar }: ModalPlanillaProps) {
           return out
         }
 
+        // Busca por prefijo en vez de header exacto: los exports de Reservo
+        // usan headers como "Tratamiento" (no "Nombre") o "Gratuito (1: Si; 0: No)"
+        // (no "Gratuito"), así que un match exacto los deja siempre vacíos.
+        const buscarCampo = (r: Record<string, any>, alias: string[]): any => {
+          for (const a of alias) {
+            const key = Object.keys(r).find(k => k.startsWith(a))
+            if (key !== undefined) return r[key]
+          }
+          return undefined
+        }
+
         const parseadas: FilaPrevia[] = rows.map((row, i) => {
           const r = normalizar(row)
-          const id = parseInt(r['id'] ?? r['codigo'] ?? '', 10)
-          const nombre = String(r['nombre'] ?? r['name'] ?? '').trim()
-          const categoria = String(r['categoria'] ?? r['category'] ?? '').trim() || null
-          const valor = parseInt(String(r['valor'] ?? r['value'] ?? r['precio'] ?? '0').replace(/\D/g, ''), 10) || 0
-          const gratuitoRaw = String(r['gratuito'] ?? r['free'] ?? r['gratis'] ?? 'false').toLowerCase()
+          const id = parseInt(buscarCampo(r, ['id', 'codigo']) ?? '', 10)
+          const nombre = String(buscarCampo(r, ['nombre', 'name', 'tratamiento']) ?? '').trim()
+          const categoria = String(buscarCampo(r, ['categoria', 'category']) ?? '').trim() || null
+          const valor = parseInt(String(buscarCampo(r, ['valor', 'value', 'precio']) ?? '0').replace(/\D/g, ''), 10) || 0
+          const gratuitoRaw = String(buscarCampo(r, ['gratuito', 'free', 'gratis']) ?? 'false').toLowerCase()
           const gratuito = ['true', '1', 'si', 'sí', 'yes'].includes(gratuitoRaw)
 
           const errores: string[] = []
