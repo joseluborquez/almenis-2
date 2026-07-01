@@ -150,9 +150,43 @@ function generarCierre(atenciones: AtencionAnonimizada[], catalogo: Tratamiento[
   }
 }
 
+// ── Matching de profesionales contra usuarios registrados ────────────────────
+
+interface Usuario {
+  id: string
+  profesional_nombre: string
+}
+
+function matchUsuarioPorNombre(pdfNombre: string, usuarios: Usuario[]): Usuario | null {
+  const norm = normalizar(pdfNombre)
+  // 1. Exacto
+  const exacto = usuarios.find(u => normalizar(u.profesional_nombre) === norm)
+  if (exacto) return exacto
+  // 2. Contiene (el nombre del PDF está dentro del nombre completo o viceversa)
+  const contiene = usuarios.find(u => {
+    const un = normalizar(u.profesional_nombre)
+    return un.includes(norm) || norm.includes(un)
+  })
+  if (contiene) return contiene
+  // 3. Overlap de palabras clave (≥1 palabra en común)
+  const palabrasNombre = palabrasClave(pdfNombre)
+  let mejor: Usuario | null = null
+  let mejorScore = 0
+  for (const u of usuarios) {
+    const palabrasU = palabrasClave(u.profesional_nombre)
+    const comunes = palabrasNombre.filter(p => palabrasU.includes(p))
+    const score = comunes.length / Math.max(palabrasNombre.length, palabrasU.length)
+    if (comunes.length >= 1 && score > mejorScore) {
+      mejorScore = score
+      mejor = u
+    }
+  }
+  return mejor
+}
+
 // ── Guardar en Supabase ──────────────────────────────────────────────────────
 
-async function guardarCierre(supabase: any, supabaseAdmin: any, resultado: any, fecha: string, userId: string) {
+async function guardarCierre(supabase: any, resultado: any, fecha: string, userId: string, usuarios: Usuario[]) {
   const { data: cierreDiario, error: e1 } = await supabase
     .from('cierres_diarios')
     .upsert({
@@ -169,44 +203,10 @@ async function guardarCierre(supabase: any, supabaseAdmin: any, resultado: any, 
 
   await supabase.from('cierres_profesional').delete().eq('cierre_diario_id', cierreDiario.id)
 
-  // Cargar todos los profesionales para hacer matching fuzzy
-  const { data: usuarios } = await supabaseAdmin
-    .from('usuarios')
-    .select('id, profesional_nombre')
-    .eq('rol', 'profesional')
-
-  function matchProfesionalId(pdfNombre: string): string | null {
-    if (!usuarios) return null
-    const norm = normalizar(pdfNombre)
-    // 1. Exacto
-    const exacto = usuarios.find((u: any) => normalizar(u.profesional_nombre) === norm)
-    if (exacto) return exacto.id
-    // 2. Contiene (el nombre del PDF está dentro del nombre completo o viceversa)
-    const contiene = usuarios.find((u: any) => {
-      const un = normalizar(u.profesional_nombre)
-      return un.includes(norm) || norm.includes(un)
-    })
-    if (contiene) return contiene.id
-    // 3. Overlap de palabras clave (≥2 palabras en común)
-    const palabrasNombre = palabrasClave(pdfNombre)
-    let mejorId: string | null = null
-    let mejorScore = 0
-    for (const u of usuarios as any[]) {
-      const palabrasU = palabrasClave(u.profesional_nombre)
-      const comunes = palabrasNombre.filter((p: string) => palabrasU.includes(p))
-      const score = comunes.length / Math.max(palabrasNombre.length, palabrasU.length)
-      if (comunes.length >= 1 && score > mejorScore) {
-        mejorScore = score
-        mejorId = u.id
-      }
-    }
-    return mejorId
-  }
-
   const filas = resultado.cierre_por_profesional.map((cp: any) => ({
     cierre_diario_id: cierreDiario.id,
     profesional_nombre: cp.profesional,
-    profesional_id: matchProfesionalId(cp.profesional),
+    profesional_id: matchUsuarioPorNombre(cp.profesional, usuarios)?.id ?? null,
     total_atenciones: cp.total_atenciones,
     atendidos: cp.atendidos,
     total_recaudado: cp.total_recaudado,
@@ -278,9 +278,23 @@ serve(async (req) => {
 
     if (eCatalogo) throw new Error(`Error cargando tratamientos: ${eCatalogo.message}`)
 
-    const resultado = generarCierre(atenciones, catalogo ?? [], fecha)
+    const { data: usuarios } = await supabaseAdmin
+      .from('usuarios')
+      .select('id, profesional_nombre')
+      .eq('rol', 'profesional')
 
-    await guardarCierre(supabase, supabaseAdmin, resultado, fecha, user.id)
+    // Canonizar el nombre de profesional contra los usuarios registrados antes
+    // de agrupar: el PDF a veces mezcla texto extra (comentarios/notas) en la
+    // columna Box/Prof, lo que produce variantes del mismo nombre y termina
+    // duplicando la tarjeta del profesional en el cierre.
+    const atencionesCanonizadas: AtencionAnonimizada[] = atenciones.map((a: AtencionAnonimizada) => {
+      const match = matchUsuarioPorNombre(a.profesional, usuarios ?? [])
+      return match ? { ...a, profesional: match.profesional_nombre } : a
+    })
+
+    const resultado = generarCierre(atencionesCanonizadas, catalogo ?? [], fecha)
+
+    await guardarCierre(supabase, resultado, fecha, user.id, usuarios ?? [])
 
     return new Response(JSON.stringify({ resultado }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
