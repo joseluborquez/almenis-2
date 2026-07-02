@@ -121,19 +121,13 @@ function generarCierre(atenciones: AtencionAnonimizada[], catalogo: Tratamiento[
   }
 
   const cierre_por_profesional = Array.from(porProfesional.entries()).map(([prof, data]) => {
-    // Agrupar detalle por tratamiento+estado
-    const detalleMap = new Map<string, { tratamiento: string; valor: number; estado: string; cantidad: number }>()
-
-    for (const a of data.atenciones) {
-      const key = `${a.tratamiento}|${a.estado}`
-      if (detalleMap.has(key)) {
-        detalleMap.get(key)!.cantidad++
-      } else {
-        detalleMap.set(key, { tratamiento: a.tratamiento, valor: a.valor, estado: a.estado, cantidad: 1 })
-      }
-    }
-
-    const detalle = Array.from(detalleMap.values())
+    // Sin agrupamiento: cada paciente es una fila independiente aunque tenga el mismo tratamiento
+    const detalle = data.atenciones.map(a => ({
+      tratamiento: a.tratamiento,
+      valor: a.valor,
+      estado: a.estado,
+      cantidad: 1,
+    }))
     const cuentaParaTotal = (estado: string) => estado === 'Atendido'
     const atendidos = data.atenciones.filter(a => cuentaParaTotal(a.estado)).length
     const total_recaudado = data.atenciones
