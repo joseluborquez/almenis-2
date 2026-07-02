@@ -94,14 +94,28 @@ function generarCierre(atenciones: AtencionAnonimizada[], catalogo: Tratamiento[
       porProfesional.set(prof, { atenciones: [] })
     }
 
-    const match = matchTratamiento(a.tratamiento, catalogo)
-    const valor = match ? match.valor : 0
+    // Si el campo contiene comas, puede ser un tratamiento combinado (varios
+    // servicios en una sola cita). Se busca el valor de cada parte por separado
+    // y se suman, pero se guarda como UNA sola entrada con el nombre completo.
+    const partes = a.tratamiento.split(',').map(p => p.trim()).filter(Boolean)
+    let valorTotal = 0
+    const sinMatch: string[] = []
 
-    if (!match) sinRegistro.add(a.tratamiento)
+    for (const parte of partes) {
+      const match = matchTratamiento(parte, catalogo)
+      if (match) {
+        valorTotal += match.valor
+      } else {
+        sinMatch.push(parte)
+      }
+    }
+
+    // Solo se registra como sin-registro si NINGUNA parte tuvo match
+    if (sinMatch.length === partes.length) sinRegistro.add(a.tratamiento)
 
     porProfesional.get(prof)!.atenciones.push({
-      tratamiento: match ? match.nombre : a.tratamiento,
-      valor,
+      tratamiento: a.tratamiento,
+      valor: valorTotal,
       estado: a.estado,
     })
   }

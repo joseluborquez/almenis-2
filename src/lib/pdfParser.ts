@@ -72,12 +72,8 @@ function agruparPorFila(items: Array<{ x: number; y: number; str: string }>): Fi
   return filas.sort((a, b) => a.y - b.y)
 }
 
-function limpiarTratamientos(raw: string): string[] {
-  // Separar tratamientos duplicados en la misma celda: "A Fonasa, A Fonasa" → ["A Fonasa", "A Fonasa"]
-  return raw
-    .split(',')
-    .map(t => t.trim())
-    .filter(t => t.length > 0)
+function limpiarTratamiento(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim()
 }
 
 function esHeaderOMetadata(fila: FilaRaw): boolean {
@@ -141,18 +137,13 @@ export async function parsearPDF(file: File): Promise<{ atenciones: AtencionAnon
     // Ignorar filas sin tratamiento (Agenda Abierta, bloques vacíos)
     if (!tratamientoRaw || !profesional) continue
 
-    // Separar múltiples tratamientos en una celda
-    const tratamientos = limpiarTratamientos(tratamientoRaw)
-
-    for (const tratamiento of tratamientos) {
-      atenciones.push({
-        hora,
-        tratamiento,
-        estado,
-        profesional,
-        // RUT, Nombre, Contacto, Ficha: NUNCA se incluyen
-      })
-    }
+    atenciones.push({
+      hora,
+      tratamiento: limpiarTratamiento(tratamientoRaw),
+      estado,
+      profesional,
+      // RUT, Nombre, Contacto, Ficha: NUNCA se incluyen
+    })
   }
 
   return { atenciones, fecha: fechaDetectada }
