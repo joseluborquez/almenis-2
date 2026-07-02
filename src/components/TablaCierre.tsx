@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { CierreProfesional, DetalleItem, ResultadoCierre } from '../types'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
+import type { CierreProfesional, DetalleItem, ResultadoCierre, Tratamiento } from '../types'
 
 const ESTADOS = ['Atendido', 'Confirmado', 'Llegó', 'En atención', 'No Confirmado', 'Suspendió', 'No llegó']
 
@@ -58,14 +59,86 @@ function AceptacionBadge({ aceptado, comentario }: { aceptado: boolean; comentar
   )
 }
 
+// ── Selector de tratamiento con buscador ─────────────────────────────────────
+
+interface SelectorTratamientoProps {
+  valor: string
+  catalogo: Tratamiento[]
+  onChange: (nombre: string, valor: number) => void
+}
+
+function SelectorTratamiento({ valor, catalogo, onChange }: SelectorTratamientoProps) {
+  const [busqueda, setBusqueda] = useState(valor)
+  const [abierto, setAbierto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Sincronizar si el valor externo cambia (ej: cancelar edición)
+  useEffect(() => { setBusqueda(valor) }, [valor])
+
+  const filtrados = busqueda.trim()
+    ? catalogo.filter(t => t.nombre.toLowerCase().includes(busqueda.toLowerCase())).slice(0, 10)
+    : catalogo.slice(0, 10)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setAbierto(false)
+        setBusqueda(valor) // restaurar si se cierra sin seleccionar
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [valor])
+
+  const seleccionar = (t: Tratamiento) => {
+    setBusqueda(t.nombre)
+    setAbierto(false)
+    onChange(t.nombre, t.valor)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={busqueda}
+        onChange={e => { setBusqueda(e.target.value); setAbierto(true) }}
+        onFocus={() => setAbierto(true)}
+        className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white min-w-[160px]"
+        placeholder="Buscar tratamiento..."
+      />
+      {abierto && filtrados.length > 0 && (
+        <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-52 overflow-y-auto min-w-[260px]">
+          {filtrados.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onMouseDown={e => e.preventDefault()} // evitar que el blur cierre antes del click
+              onClick={() => seleccionar(t)}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between gap-3 border-b border-slate-50 last:border-0"
+            >
+              <span className="text-slate-700 font-medium leading-snug">{t.nombre}</span>
+              <span className="text-slate-400 shrink-0">
+                {t.gratuito || t.valor === 0 ? 'Gratuito' : formatPesos(t.valor)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tarjeta por profesional ──────────────────────────────────────────────────
+
 interface TarjetaProps {
   cierre: CierreProfesional
   isAdmin: boolean
+  catalogo: Tratamiento[]
   onGuardar: (actualizado: CierreProfesional) => Promise<void>
   onAceptar?: (comentario?: string) => Promise<void>
 }
 
-function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaProps) {
+function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }: TarjetaProps) {
   const [editando, setEditando] = useState(false)
   const [detalle, setDetalle] = useState<DetalleItem[]>(cierre.detalle)
   const [guardando, setGuardando] = useState(false)
@@ -80,6 +153,14 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
 
   const cambiarEstado = (idx: number, nuevoEstado: string) => {
     setDetalle(prev => prev.map((d, i) => i === idx ? { ...d, estado: nuevoEstado } : d))
+  }
+
+  const cambiarTratamiento = (idx: number, nombre: string, valor: number) => {
+    setDetalle(prev => prev.map((d, i) => i === idx ? { ...d, tratamiento: nombre, valor } : d))
+  }
+
+  const cambiarValor = (idx: number, valor: number) => {
+    setDetalle(prev => prev.map((d, i) => i === idx ? { ...d, valor } : d))
   }
 
   const handleGuardar = async () => {
@@ -173,7 +254,6 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
             <thead>
               <tr className="text-left border-b border-slate-100">
                 <th className="px-4 sm:px-5 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Servicio</th>
-                <th className="px-2 sm:px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide text-center w-10">Cant.</th>
                 <th className="px-2 sm:px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide">Estado</th>
                 <th className="px-4 sm:px-5 py-2 text-xs font-medium text-slate-500 uppercase tracking-wide text-right">Valor</th>
               </tr>
@@ -181,8 +261,17 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
             <tbody>
               {detalle.map((item, i) => (
                 <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/50">
-                  <td className="px-4 sm:px-5 py-2 sm:py-2.5 text-slate-700 text-xs sm:text-sm">{item.tratamiento}</td>
-                  <td className="px-2 sm:px-3 py-2 sm:py-2.5 text-center text-slate-600 text-xs sm:text-sm">{item.cantidad}</td>
+                  <td className="px-4 sm:px-5 py-2 sm:py-2.5 text-slate-700 text-xs sm:text-sm">
+                    {editando ? (
+                      <SelectorTratamiento
+                        valor={item.tratamiento}
+                        catalogo={catalogo}
+                        onChange={(nombre, valor) => cambiarTratamiento(i, nombre, valor)}
+                      />
+                    ) : (
+                      item.tratamiento
+                    )}
+                  </td>
                   <td className="px-2 sm:px-3 py-2 sm:py-2.5">
                     {editando ? (
                       <select
@@ -198,17 +287,26 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
                     )}
                   </td>
                   <td className="px-4 sm:px-5 py-2 sm:py-2.5 text-right font-medium text-slate-800 text-xs sm:text-sm whitespace-nowrap">
-                    {item.valor > 0 && item.estado === 'Atendido'
-                      ? formatPesos(item.valor * item.cantidad)
-                      : <span className="text-slate-400">—</span>
-                    }
+                    {editando ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={item.valor}
+                        onChange={e => cambiarValor(i, parseInt(e.target.value.replace(/\D/g, '')) || 0)}
+                        className="w-28 text-right text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    ) : (
+                      item.valor > 0 && item.estado === 'Atendido'
+                        ? formatPesos(item.valor * item.cantidad)
+                        : <span className="text-slate-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-blue-50">
-                <td className="px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold text-blue-800" colSpan={3}>Total recaudado</td>
+                <td className="px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-semibold text-blue-800" colSpan={2}>Total recaudado</td>
                 <td className="px-4 sm:px-5 py-2.5 text-right font-bold text-blue-800 text-xs sm:text-sm whitespace-nowrap">{formatPesos(total_recaudado)}</td>
               </tr>
             </tfoot>
@@ -216,11 +314,10 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
         </div>
       )}
 
-      {/* Sección de aceptación — solo visible al profesional cuando se pasa onAceptar */}
+      {/* Sección de aceptación */}
       {onAceptar && (
         <div className="px-4 sm:px-5 py-3 border-t border-slate-100">
           {cierre.aceptado ? (
-            /* Estado: ya aceptado */
             <div className={`flex items-start gap-2 text-sm ${cierre.comentario_profesional ? 'text-amber-700' : 'text-green-700'}`}>
               <span className="mt-0.5 text-base leading-none">{cierre.comentario_profesional ? '⚠' : '✓'}</span>
               <div>
@@ -236,7 +333,6 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
               </div>
             </div>
           ) : mostrarObservacion ? (
-            /* Estado: escribiendo observación */
             <div className="space-y-2">
               <p className="text-xs font-medium text-slate-600">Describe la irregularidad:</p>
               <textarea
@@ -264,7 +360,6 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
               </div>
             </div>
           ) : (
-            /* Estado: pendiente de aceptar */
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs text-slate-500 mr-1">¿Los montos de tu cierre son correctos?</p>
               {errorAceptar && <p className="text-xs text-red-600 w-full">{errorAceptar}</p>}
@@ -286,7 +381,7 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
         </div>
       )}
 
-      {/* Vista admin: mostrar comentario del profesional si existe */}
+      {/* Vista admin: comentario del profesional */}
       {isAdmin && cierre.aceptado && cierre.comentario_profesional && (
         <div className="px-4 sm:px-5 py-3 border-t border-amber-100 bg-amber-50">
           <p className="text-xs font-medium text-amber-800 mb-0.5">Observación del profesional:</p>
@@ -300,6 +395,8 @@ function TarjetaProfesional({ cierre, isAdmin, onGuardar, onAceptar }: TarjetaPr
   )
 }
 
+// ── Componente principal ─────────────────────────────────────────────────────
+
 interface Props {
   resultado: ResultadoCierre
   soloParaProfesional?: string
@@ -309,6 +406,16 @@ interface Props {
 }
 
 export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, onActualizarProfesional, onAceptarCierre }: Props) {
+  const [catalogo, setCatalogo] = useState<Tratamiento[]>([])
+
+  useEffect(() => {
+    supabase
+      .from('tratamientos')
+      .select('id, nombre, categoria, valor, gratuito')
+      .order('nombre')
+      .then(({ data }) => { if (data) setCatalogo(data) })
+  }, [])
+
   const cierres = soloParaProfesional
     ? resultado.cierre_por_profesional.filter(c => c.profesional === soloParaProfesional)
     : resultado.cierre_por_profesional
@@ -357,6 +464,7 @@ export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, o
             key={i}
             cierre={cierre}
             isAdmin={isAdmin}
+            catalogo={catalogo}
             onGuardar={actualizado => onActualizarProfesional?.(cierre.profesional, actualizado) ?? Promise.resolve()}
             onAceptar={onAceptarCierre ? (comentario) => onAceptarCierre(cierre.profesional, comentario) : undefined}
           />
