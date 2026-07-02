@@ -1,9 +1,11 @@
 import type { AtencionAnonimizada } from '../types'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-// Columnas del PDF de Reservo (posiciones X aproximadas detectadas del PDF real)
-// Hora | RUT | Nombre | Descripción | Comentario | Estado | Contacto | Ficha | Box/Prof
-const COL_BOUNDARIES = {
+type ColName = 'hora' | 'rut' | 'nombre' | 'tratamiento' | 'comentario' | 'estado' | 'contacto' | 'ficha' | 'profesional'
+type ColBounds = Record<ColName, { min: number; max: number }>
+
+// Fallback: posiciones hardcodeadas para el layout original de Reservo
+const COL_BOUNDARIES_DEFAULT: ColBounds = {
   hora:        { min: 0,   max: 85  },
   rut:         { min: 85,  max: 145 },
   nombre:      { min: 145, max: 225 },
@@ -14,6 +16,19 @@ const COL_BOUNDARIES = {
   ficha:       { min: 575, max: 648 },
   profesional: { min: 648, max: 900 },
 }
+
+// Textos exactos de los headers del PDF de Reservo y su columna correspondiente
+const HEADER_MAP: Array<[string, ColName]> = [
+  ['Hora',                      'hora'],
+  ['RUT',                       'rut'],
+  ['Nombre',                    'nombre'],
+  ['Descripción/Tratamiento',   'tratamiento'],
+  ['Comentario',                'comentario'],
+  ['Estado',                    'estado'],
+  ['Contacto',                  'contacto'],
+  ['Ficha',                     'ficha'],
+  ['Box/Prof',                  'profesional'],
+]
 
 const ESTADOS_VALIDOS = new Set([
   'Atendido', 'Suspendió', 'Llegó', 'En atención',
@@ -26,27 +41,57 @@ const HEADER_TEXTOS = new Set([
   'Hoja de Estadística Diaria', 'Fecha:',
 ])
 
-function detectarColumna(x: number): keyof typeof COL_BOUNDARIES | null {
-  for (const [col, bounds] of Object.entries(COL_BOUNDARIES)) {
-    if (x >= bounds.min && x < bounds.max) {
-      return col as keyof typeof COL_BOUNDARIES
-    }
+// Detecta los límites de columna leyendo las posiciones X de la fila de headers
+// del PDF. Funciona independientemente del zoom o layout del computador que exportó.
+function detectarColumnas(items: Array<{ x: number; str: string }>): ColBounds {
+  const encontradas: Array<{ col: ColName; x: number }> = []
+
+  for (const [texto, col] of HEADER_MAP) {
+    const item = items.find(i => i.str.trim() === texto)
+    if (item) encontradas.push({ col, x: item.x })
+  }
+
+  // Mínimo necesario: tratamiento, estado y profesional
+  const cols = new Set(encontradas.map(e => e.col))
+  if (!cols.has('tratamiento') || !cols.has('estado') || !cols.has('profesional')) {
+    return COL_BOUNDARIES_DEFAULT
+  }
+
+  encontradas.sort((a, b) => a.x - b.x)
+
+  const bounds = {} as ColBounds
+  for (let i = 0; i < encontradas.length; i++) {
+    const { col, x } = encontradas[i]
+    const min = i === 0 ? 0 : x - 4
+    const max = i + 1 < encontradas.length ? encontradas[i + 1].x - 4 : 9999
+    bounds[col] = { min, max }
+  }
+
+  // Rellenar columnas no encontradas con un rango vacío para evitar errores
+  for (const [, col] of HEADER_MAP) {
+    if (!bounds[col]) bounds[col] = { min: -1, max: -1 }
+  }
+
+  return bounds
+}
+
+function detectarColumna(x: number, bounds: ColBounds): ColName | null {
+  for (const [col, b] of Object.entries(bounds) as Array<[ColName, { min: number; max: number }]>) {
+    if (x >= b.min && x < b.max) return col
   }
   return null
 }
 
 interface FilaRaw {
   y: number
-  maxY: number  // última Y añadida, para chain-merging de texto que hace wrap
-  celdas: Partial<Record<keyof typeof COL_BOUNDARIES, string>>
+  maxY: number
+  celdas: Partial<Record<ColName, string>>
 }
 
-// Tolerancia ajustada al PDF de Reservo: líneas dentro de una celda con wrap
-// están ~11px separadas; filas distintas están ~19px+ separadas.
+// Líneas dentro de una celda con wrap están ~11-14px separadas; filas distintas ≥19px
 const Y_TOLERANCE = 15
 
-function agruparPorFila(items: Array<{ x: number; y: number; str: string }>): FilaRaw[] {
-  // Ordenar top-down para que el chain-merging funcione correctamente
+function agruparPorFila(items: Array<{ x: number; y: number; str: string }>, bounds: ColBounds): FilaRaw[] {
   const sorted = [...items].sort((a, b) => a.y - b.y)
   const filas: FilaRaw[] = []
 
@@ -54,10 +99,9 @@ function agruparPorFila(items: Array<{ x: number; y: number; str: string }>): Fi
     const texto = item.str.trim()
     if (!texto) continue
 
-    const col = detectarColumna(item.x)
+    const col = detectarColumna(item.x, bounds)
     if (!col) continue
 
-    // Buscar fila existente cuya maxY esté dentro de la tolerancia
     const fila = filas.find(f => Math.abs(f.maxY - item.y) <= Y_TOLERANCE)
 
     if (!fila) {
@@ -85,15 +129,13 @@ function esHeaderOMetadata(fila: FilaRaw): boolean {
 }
 
 export async function parsearPDF(file: File): Promise<{ atenciones: AtencionAnonimizada[]; fecha: string }> {
-  // Cargar PDF.js dinámicamente para no bloquear el bundle inicial
   const pdfjsLib = await import('pdfjs-dist')
-
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
 
-  const todosLosItems: Array<{ x: number; y: number; str: string; pageY: number }> = []
+  const todosLosItems: Array<{ x: number; y: number; str: string }> = []
   let fechaDetectada = new Date().toISOString().split('T')[0]
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -105,22 +147,23 @@ export async function parsearPDF(file: File): Promise<{ atenciones: AtencionAnon
       if (!('str' in item)) continue
       const tx = item.transform
       const x = tx[4]
-      const y = viewport.height - tx[5] // convertir coordenada PDF a top-down
+      const y = viewport.height - tx[5]
       const pageY = (pageNum - 1) * viewport.height + y
-
       const texto = item.str.trim()
 
-      // Detectar fecha del encabezado
       if (texto.startsWith('Fecha:')) {
         const match = texto.match(/(\d{4}-\d{2}-\d{2})/)
         if (match) fechaDetectada = match[1]
       }
 
-      todosLosItems.push({ x, y: pageY, str: texto, pageY })
+      todosLosItems.push({ x, y: pageY, str: texto })
     }
   }
 
-  const filas = agruparPorFila(todosLosItems)
+  // Detectar posiciones de columnas desde los headers del PDF
+  const bounds = detectarColumnas(todosLosItems)
+
+  const filas = agruparPorFila(todosLosItems, bounds)
   const atenciones: AtencionAnonimizada[] = []
 
   for (const fila of filas) {
@@ -131,10 +174,7 @@ export async function parsearPDF(file: File): Promise<{ atenciones: AtencionAnon
     const tratamientoRaw = fila.celdas.tratamiento?.trim() || ''
     const hora = fila.celdas.hora?.trim() || ''
 
-    // Ignorar filas sin estado válido
     if (!ESTADOS_VALIDOS.has(estado)) continue
-
-    // Ignorar filas sin tratamiento (Agenda Abierta, bloques vacíos)
     if (!tratamientoRaw || !profesional) continue
 
     atenciones.push({
