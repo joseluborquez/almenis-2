@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Layout } from '../components/Layout'
 import { TablaCierre } from '../components/TablaCierre'
-import type { Usuario, ResultadoCierre } from '../types'
+import type { Usuario, ResultadoCierre, CierreProfesional } from '../types'
 
 interface RegistroHistorico {
   fecha: string
@@ -12,6 +12,9 @@ interface RegistroHistorico {
   datos_json?: ResultadoCierre
   detalle_json?: any[]
   profesional_nombre?: string
+  aceptado?: boolean
+  aceptado_at?: string | null
+  comentario_profesional?: string | null
 }
 
 interface Props {
@@ -51,7 +54,7 @@ export function Historico({ usuario }: Props) {
       } else {
         const { data, error: e } = await supabase
           .from('cierres_profesional')
-          .select('fecha, total_atenciones, atendidos, total_recaudado, detalle_json, profesional_nombre')
+          .select('fecha, total_atenciones, atendidos, total_recaudado, detalle_json, profesional_nombre, aceptado, aceptado_at, comentario_profesional')
           .eq('profesional_id', usuario.id)
           .order('fecha', { ascending: false })
           .limit(60)
@@ -68,6 +71,76 @@ export function Historico({ usuario }: Props) {
 
   const verDetalle = (registro: RegistroHistorico) => {
     setSeleccionado(registro)
+  }
+
+  const actualizarProfesional = async (nombreProf: string, actualizado: CierreProfesional) => {
+    if (!seleccionado?.datos_json) return
+    const fecha = seleccionado.fecha
+
+    const nuevoProfesionales = seleccionado.datos_json.cierre_por_profesional.map(p =>
+      p.profesional === nombreProf ? actualizado : p
+    )
+    const nuevoResultado: ResultadoCierre = {
+      ...seleccionado.datos_json,
+      cierre_por_profesional: nuevoProfesionales,
+      cierre_general: {
+        ...seleccionado.datos_json.cierre_general,
+        atendidos: nuevoProfesionales.reduce((s, p) => s + p.atendidos, 0),
+        total_recaudado: nuevoProfesionales.reduce((s, p) => s + p.total_recaudado, 0),
+      },
+    }
+
+    const { error: e1 } = await supabase
+      .from('cierres_diarios')
+      .update({
+        total_recaudado: nuevoResultado.cierre_general.total_recaudado,
+        datos_json: nuevoResultado,
+      })
+      .eq('fecha', fecha)
+
+    if (e1) throw new Error(e1.message)
+
+    const { error: e2 } = await supabase
+      .from('cierres_profesional')
+      .update({
+        atendidos: actualizado.atendidos,
+        total_recaudado: actualizado.total_recaudado,
+        detalle_json: actualizado.detalle,
+      })
+      .eq('fecha', fecha)
+      .eq('profesional_nombre', nombreProf)
+
+    if (e2) throw new Error(e2.message)
+
+    setSeleccionado(prev => prev ? { ...prev, datos_json: nuevoResultado, total_recaudado: nuevoResultado.cierre_general.total_recaudado } : prev)
+    setRegistros(prev => prev.map(r => r.fecha === fecha
+      ? { ...r, datos_json: nuevoResultado, atendidos: nuevoResultado.cierre_general.atendidos, total_recaudado: nuevoResultado.cierre_general.total_recaudado }
+      : r
+    ))
+  }
+
+  const aceptarCierre = async (_profesional: string, comentario?: string) => {
+    if (!seleccionado) return
+    const fecha = seleccionado.fecha
+    const ahora = new Date().toISOString()
+
+    const { error: e } = await supabase
+      .from('cierres_profesional')
+      .update({
+        aceptado: true,
+        aceptado_at: ahora,
+        comentario_profesional: comentario ?? null,
+      })
+      .eq('fecha', fecha)
+      .eq('profesional_id', usuario.id)
+
+    if (e) throw new Error(e.message)
+
+    setSeleccionado(prev => prev ? { ...prev, aceptado: true, aceptado_at: ahora, comentario_profesional: comentario ?? null } : prev)
+    setRegistros(prev => prev.map(r => r.fecha === fecha
+      ? { ...r, aceptado: true, aceptado_at: ahora, comentario_profesional: comentario ?? null }
+      : r
+    ))
   }
 
   const resultadoParaDetalle = (registro: RegistroHistorico): ResultadoCierre | null => {
@@ -88,6 +161,9 @@ export function Historico({ usuario }: Props) {
           atendidos: registro.atendidos,
           total_recaudado: registro.total_recaudado,
           detalle: registro.detalle_json,
+          aceptado: registro.aceptado,
+          aceptado_at: registro.aceptado_at,
+          comentario_profesional: registro.comentario_profesional,
         }],
         items_sin_registro: [],
       }
@@ -119,6 +195,9 @@ export function Historico({ usuario }: Props) {
             <TablaCierre
               resultado={resultado}
               soloParaProfesional={usuario.rol === 'profesional' ? usuario.profesional_nombre || undefined : undefined}
+              isAdmin={usuario.rol === 'admin'}
+              onActualizarProfesional={usuario.rol === 'admin' ? actualizarProfesional : undefined}
+              onAceptarCierre={usuario.rol === 'profesional' ? aceptarCierre : undefined}
             />
           )}
         </div>
