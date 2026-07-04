@@ -15,6 +15,17 @@ interface ProfesionalFila {
   profesional_nombre: string | null
 }
 
+// El teclado en español (autocorrección) y el autocompletado del navegador a
+// veces reemplazan la "n" del dominio por "ñ" (ej: almenis.cl → almeñis.cl),
+// lo que el navegador rechaza como email inválido. El dominio de la clínica
+// nunca lleva ñ, así que se corrige apenas aparece después del "@".
+function limpiarEmail(valor: string): string {
+  const posArroba = valor.indexOf('@')
+  if (posArroba === -1) return valor
+  const dominio = valor.slice(posArroba).replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+  return valor.slice(0, posArroba) + dominio
+}
+
 // ── Modal: agregar profesional ───────────────────────────────────────────────
 
 interface ModalProps {
@@ -86,8 +97,9 @@ function ModalAgregar({ onCrear, onCerrar }: ModalProps) {
             <input
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={e => setEmail(limpiarEmail(e.target.value))}
               placeholder="profesional@almenis.cl"
+              autoComplete="off"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}

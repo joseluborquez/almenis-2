@@ -2,6 +2,16 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../lib/auth'
 
+// El teclado en español (autocorrección) a veces reemplaza la "n" del
+// dominio por "ñ" (ej: almenis.cl → almeñis.cl), lo que el navegador
+// rechaza como email inválido. Los dominios de la clínica no llevan ñ.
+function limpiarEmail(valor: string): string {
+  const posArroba = valor.indexOf('@')
+  if (posArroba === -1) return valor
+  const dominio = valor.slice(posArroba).replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+  return valor.slice(0, posArroba) + dominio
+}
+
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -45,7 +55,7 @@ export function Login() {
               <input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={e => setEmail(limpiarEmail(e.target.value))}
                 required
                 autoComplete="email"
                 autoCapitalize="none"
