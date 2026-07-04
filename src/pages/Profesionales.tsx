@@ -88,6 +88,9 @@ function ModalAgregar({ onCrear, onCerrar }: ModalProps) {
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="profesional@almenis.cl"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>

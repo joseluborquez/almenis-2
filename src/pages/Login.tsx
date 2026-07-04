@@ -48,6 +48,9 @@ export function Login() {
                 onChange={e => setEmail(e.target.value)}
                 required
                 autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-300 text-slate-800 text-sm
                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                            placeholder:text-slate-400"
