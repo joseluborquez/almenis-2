@@ -7,6 +7,7 @@ import { Subir } from './pages/Subir'
 import { Dashboard } from './pages/Dashboard'
 import { Historico } from './pages/Historico'
 import { Tratamientos } from './pages/Tratamientos'
+import { Profesionales } from './pages/Profesionales'
 import type { Usuario } from './types'
 
 const USUARIO_DEMO: Usuario = {
@@ -143,6 +144,14 @@ function App() {
             !usuarioEfectivo ? <Navigate to="/login" replace /> :
             usuarioEfectivo.rol !== 'admin' ? <Navigate to="/dashboard" replace /> :
             <Tratamientos usuario={usuarioEfectivo} />
+          }
+        />
+        <Route
+          path="/profesionales"
+          element={
+            !usuarioEfectivo ? <Navigate to="/login" replace /> :
+            usuarioEfectivo.rol !== 'admin' ? <Navigate to="/dashboard" replace /> :
+            <Profesionales usuario={usuarioEfectivo} />
           }
         />
         <Route

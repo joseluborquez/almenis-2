@@ -21,6 +21,7 @@ export function Layout({ usuario, children }: Props) {
     { label: 'Cierre de Hoy', path: '/dashboard', icon: '◎' },
     { label: 'Histórico', path: '/historico', icon: '☰' },
     { label: 'Tratamientos', path: '/tratamientos', icon: '♦' },
+    { label: 'Profesionales', path: '/profesionales', icon: '👤' },
   ]
   const navProfesional = [
     { label: 'Mi Cierre', path: '/dashboard', icon: '◎' },
