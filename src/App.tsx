@@ -28,9 +28,15 @@ function BannerDemo() {
   )
 }
 
+function timeout(ms: number): Promise<never> {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+}
+
 function App() {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [cargando, setCargando] = useState(true)
+  const [errorSesion, setErrorSesion] = useState(false)
+  const [intento, setIntento] = useState(0)
 
   useEffect(() => {
     if (!supabaseConfigured) {
@@ -39,22 +45,30 @@ function App() {
       return
     }
 
-    getUsuarioActual().then(u => {
-      setUsuario(u)
-      setCargando(false)
-    })
+    let activo = true
+    setCargando(true)
+    setErrorSesion(false)
+
+    Promise.race([getUsuarioActual(), timeout(10000)])
+      .then(u => { if (activo) setUsuario(u) })
+      .catch(() => { if (activo) setErrorSesion(true) })
+      .finally(() => { if (activo) setCargando(false) })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        const u = await getUsuarioActual()
-        setUsuario(u)
+        try {
+          const u = await getUsuarioActual()
+          if (activo) setUsuario(u)
+        } catch {
+          if (activo) setErrorSesion(true)
+        }
       } else {
         setUsuario(null)
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [])
+    return () => { activo = false; subscription.unsubscribe() }
+  }, [intento])
 
   if (cargando) {
     return (
@@ -62,6 +76,23 @@ function App() {
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-slate-500 text-sm">Cargando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (errorSesion) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-slate-700 font-medium mb-1">No se pudo verificar la sesión</p>
+          <p className="text-slate-500 text-sm mb-4">Revisa tu conexión e intenta de nuevo</p>
+          <button
+            onClick={() => setIntento(i => i + 1)}
+            className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     )
