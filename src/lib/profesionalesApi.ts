@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import type { ModalidadPago } from '../types'
 
 async function mensajeError(error: unknown, fallback: string): Promise<string> {
   if (error instanceof FunctionsHttpError) {
@@ -34,4 +35,16 @@ export async function eliminarProfesional(id: string): Promise<void> {
   })
 
   if (error) throw new Error(await mensajeError(error, 'Error al eliminar profesional'))
+}
+
+export async function actualizarModalidad(
+  id: string,
+  modalidad_pago: ModalidadPago,
+  porcentaje_almenis: number
+): Promise<void> {
+  const { error } = await supabase.functions.invoke('gestionar-profesionales', {
+    body: { accion: 'actualizar_modalidad', id, modalidad_pago, porcentaje_almenis },
+  })
+
+  if (error) throw new Error(await mensajeError(error, 'Error al actualizar la modalidad de pago'))
 }

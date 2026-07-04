@@ -71,6 +71,44 @@ serve(async (req) => {
       })
     }
 
+    if (body.accion === 'actualizar_modalidad') {
+      const { id, modalidad_pago, porcentaje_almenis } = body
+
+      const MODALIDADES = ['porcentaje', 'arriendo', 'sueldo_fijo']
+      if (!id || !MODALIDADES.includes(modalidad_pago)) {
+        return jsonError('modalidad_pago inválida', 400)
+      }
+      if (modalidad_pago === 'porcentaje') {
+        if (!Number.isInteger(porcentaje_almenis) || porcentaje_almenis < 0 || porcentaje_almenis > 100) {
+          return jsonError('porcentaje_almenis debe ser un entero entre 0 y 100', 400)
+        }
+      }
+
+      const { data: objetivo } = await supabaseAdmin
+        .from('usuarios')
+        .select('rol')
+        .eq('id', id)
+        .single()
+
+      if (!objetivo || objetivo.rol !== 'profesional') {
+        return jsonError('Solo se puede modificar la modalidad de profesionales', 400)
+      }
+
+      const { error: eActualizar } = await supabaseAdmin
+        .from('usuarios')
+        .update({
+          modalidad_pago,
+          porcentaje_almenis: modalidad_pago === 'porcentaje' ? porcentaje_almenis : 30,
+        })
+        .eq('id', id)
+
+      if (eActualizar) return jsonError(eActualizar.message, 400)
+
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     if (body.accion === 'eliminar') {
       const { id } = body
       if (!id) return jsonError('Falta el id del profesional', 400)

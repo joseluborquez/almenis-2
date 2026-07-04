@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { crearProfesional, eliminarProfesional } from '../lib/profesionalesApi'
+import { actualizarModalidad, crearProfesional, eliminarProfesional } from '../lib/profesionalesApi'
 import { Layout } from '../components/Layout'
-import type { Usuario } from '../types'
+import type { ModalidadPago, Usuario } from '../types'
 
 interface Props {
   usuario: Usuario
@@ -13,6 +13,8 @@ interface ProfesionalFila {
   email: string
   nombre_completo: string
   profesional_nombre: string | null
+  modalidad_pago: ModalidadPago
+  porcentaje_almenis: number
 }
 
 // El teclado en español (autocorrección) y el autocompletado del navegador a
@@ -24,6 +26,76 @@ function limpiarEmail(valor: string): string {
   if (posArroba === -1) return valor
   const dominio = valor.slice(posArroba).replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
   return valor.slice(0, posArroba) + dominio
+}
+
+// ── Celda editable de modalidad de pago ──────────────────────────────────────
+
+interface CeldaModalidadProps {
+  profesional: ProfesionalFila
+  onActualizado: (modalidad_pago: ModalidadPago, porcentaje_almenis: number) => void
+}
+
+function CeldaModalidad({ profesional, onActualizado }: CeldaModalidadProps) {
+  const [modalidad, setModalidad] = useState<ModalidadPago>(profesional.modalidad_pago)
+  const [porcentaje, setPorcentaje] = useState(profesional.porcentaje_almenis)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  const guardar = async (nuevaModalidad: ModalidadPago, nuevoPorcentaje: number) => {
+    setGuardando(true)
+    setError('')
+    try {
+      await actualizarModalidad(profesional.id, nuevaModalidad, nuevoPorcentaje)
+      onActualizado(nuevaModalidad, nuevoPorcentaje)
+    } catch (err: any) {
+      setError(err.message)
+      setModalidad(profesional.modalidad_pago)
+      setPorcentaje(profesional.porcentaje_almenis)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const handleModalidadChange = (nueva: ModalidadPago) => {
+    setModalidad(nueva)
+    guardar(nueva, porcentaje)
+  }
+
+  const handlePorcentajeBlur = () => {
+    if (porcentaje !== profesional.porcentaje_almenis || modalidad !== profesional.modalidad_pago) {
+      guardar(modalidad, porcentaje)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5">
+        <select
+          value={modalidad}
+          onChange={e => handleModalidadChange(e.target.value as ModalidadPago)}
+          disabled={guardando}
+          className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white disabled:opacity-50"
+        >
+          <option value="porcentaje">Porcentaje</option>
+          <option value="arriendo">Arriendo mensual</option>
+          <option value="sueldo_fijo">Sueldo fijo</option>
+        </select>
+        {modalidad === 'porcentaje' && (
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={porcentaje}
+            onChange={e => setPorcentaje(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+            onBlur={handlePorcentajeBlur}
+            disabled={guardando}
+            className="w-14 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+          />
+        )}
+      </div>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  )
 }
 
 // ── Modal: agregar profesional ───────────────────────────────────────────────
@@ -162,7 +234,7 @@ export function Profesionales({ usuario }: Props) {
     setError('')
     const { data, error: e } = await supabase
       .from('usuarios')
-      .select('id, email, nombre_completo, profesional_nombre')
+      .select('id, email, nombre_completo, profesional_nombre, modalidad_pago, porcentaje_almenis')
       .eq('rol', 'profesional')
       .order('nombre_completo')
     if (e) { setError(e.message); setLoading(false); return }
@@ -244,6 +316,7 @@ export function Profesionales({ usuario }: Props) {
                     <th className="px-4 sm:px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Nombre</th>
                     <th className="px-3 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide hidden sm:table-cell">Email</th>
                     <th className="px-3 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide hidden sm:table-cell">Nombre en PDF</th>
+                    <th className="px-3 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide hidden sm:table-cell">Modalidad de pago</th>
                     <th className="px-4 sm:px-5 py-3 text-xs font-medium text-slate-500 uppercase tracking-wide text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -257,6 +330,15 @@ export function Profesionales({ usuario }: Props) {
                       <td className="px-3 py-2.5 text-slate-500 text-xs hidden sm:table-cell">{p.email}</td>
                       <td className="px-3 py-2.5 text-slate-500 text-xs hidden sm:table-cell">
                         {p.profesional_nombre ?? <span className="text-amber-500">Sin asignar</span>}
+                      </td>
+                      <td className="px-3 py-2.5 hidden sm:table-cell">
+                        <CeldaModalidad
+                          profesional={p}
+                          onActualizado={(modalidad_pago, porcentaje_almenis) => {
+                            setProfesionales(prev => prev.map(x => x.id === p.id ? { ...x, modalidad_pago, porcentaje_almenis } : x))
+                            mostrarToast('Modalidad de pago actualizada')
+                          }}
+                        />
                       </td>
                       <td className="px-4 sm:px-5 py-2.5 text-right">
                         <button

@@ -20,6 +20,8 @@ export interface DetalleItem {
   cantidad: number
 }
 
+export type ModalidadPago = 'porcentaje' | 'arriendo' | 'sueldo_fijo'
+
 export interface CierreProfesional {
   profesional: string
   total_atenciones: number
@@ -29,6 +31,10 @@ export interface CierreProfesional {
   aceptado?: boolean
   aceptado_at?: string | null
   comentario_profesional?: string | null
+  // Snapshot de la modalidad de pago vigente al generar el cierre. Ausente
+  // (undefined/null) en cierres generados antes de esta funcionalidad.
+  modalidad_pago?: ModalidadPago | null
+  porcentaje_almenis?: number | null
 }
 
 export interface CierreGeneral {
@@ -43,6 +49,9 @@ export interface ResultadoCierre {
   cierre_por_profesional: CierreProfesional[]
   items_sin_registro: string[]
   atenciones?: AtencionAnonimizada[]
+  // Nombres de profesionales del PDF que no matchearon ningún usuario
+  // registrado — quedaron con la modalidad por defecto (porcentaje 30%).
+  profesionales_sin_match?: string[]
 }
 
 export interface Usuario {

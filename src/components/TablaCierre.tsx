@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import type { CierreProfesional, DetalleItem, ResultadoCierre, Tratamiento } from '../types'
+import type { CierreProfesional, DetalleItem, ModalidadPago, ResultadoCierre, Tratamiento } from '../types'
 
 const ESTADOS = ['Atendido', 'Confirmado', 'Llegó', 'En atención', 'No Confirmado', 'Suspendió', 'No llegó']
 
@@ -18,6 +18,23 @@ function recalcularProfesional(detalle: DetalleItem[]): Pick<CierreProfesional, 
   const atendidos = detalle.filter(d => d.estado === 'Atendido').reduce((s, d) => s + d.cantidad, 0)
   const total_recaudado = detalle.filter(d => d.estado === 'Atendido').reduce((s, d) => s + d.valor * d.cantidad, 0)
   return { atendidos, total_recaudado }
+}
+
+const MODALIDAD_LABELS: Record<ModalidadPago, string> = {
+  arriendo: 'Arriendo mensual',
+  porcentaje: 'Porcentaje',
+  sueldo_fijo: 'Sueldo fijo',
+}
+
+// Cuanto de lo recaudado por el profesional es ingreso real de Almenis. Null
+// cuando el cierre no tiene modalidad registrada (generado antes de esta
+// funcionalidad) — nunca se asume un valor por defecto para datos legados.
+function calcularMontoAlmenis(cierre: Pick<CierreProfesional, 'modalidad_pago' | 'porcentaje_almenis' | 'total_recaudado'>): number | null {
+  if (!cierre.modalidad_pago) return null
+  if (cierre.modalidad_pago === 'arriendo') return 0
+  if (cierre.modalidad_pago === 'sueldo_fijo') return cierre.total_recaudado
+  if (cierre.porcentaje_almenis == null) return null
+  return Math.round(cierre.total_recaudado * cierre.porcentaje_almenis / 100)
 }
 
 function EstadoBadge({ estado }: { estado: string }) {
@@ -141,6 +158,8 @@ interface TarjetaProps {
 function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }: TarjetaProps) {
   const [editando, setEditando] = useState(false)
   const [detalle, setDetalle] = useState<DetalleItem[]>(cierre.detalle)
+  const [modalidadPago, setModalidadPago] = useState<ModalidadPago>(cierre.modalidad_pago ?? 'porcentaje')
+  const [porcentajeAlmenis, setPorcentajeAlmenis] = useState<number>(cierre.porcentaje_almenis ?? 30)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -167,7 +186,14 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
     setGuardando(true)
     setError('')
     try {
-      await onGuardar({ ...cierre, detalle, atendidos, total_recaudado })
+      await onGuardar({
+        ...cierre,
+        detalle,
+        atendidos,
+        total_recaudado,
+        modalidad_pago: modalidadPago,
+        porcentaje_almenis: modalidadPago === 'porcentaje' ? porcentajeAlmenis : null,
+      })
       setEditando(false)
     } catch (e: any) {
       setError(e.message)
@@ -178,6 +204,8 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
 
   const handleCancelar = () => {
     setDetalle(cierre.detalle)
+    setModalidadPago(cierre.modalidad_pago ?? 'porcentaje')
+    setPorcentajeAlmenis(cierre.porcentaje_almenis ?? 30)
     setEditando(false)
     setError('')
   }
@@ -212,6 +240,52 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
               <AceptacionBadge aceptado={cierre.aceptado} comentario={cierre.comentario_profesional} />
             )}
           </div>
+          {isAdmin && (
+            editando ? (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <select
+                  value={modalidadPago}
+                  onChange={e => setModalidadPago(e.target.value as ModalidadPago)}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                >
+                  <option value="porcentaje">Porcentaje</option>
+                  <option value="arriendo">Arriendo mensual</option>
+                  <option value="sueldo_fijo">Sueldo fijo</option>
+                </select>
+                {modalidadPago === 'porcentaje' && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={porcentajeAlmenis}
+                      onChange={e => setPorcentajeAlmenis(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                      className="w-16 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    <span className="text-xs text-slate-500">% para Almenis</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-xs">
+                <span className="text-slate-500">
+                  {cierre.modalidad_pago
+                    ? `${MODALIDAD_LABELS[cierre.modalidad_pago]}${cierre.modalidad_pago === 'porcentaje' ? ` (${cierre.porcentaje_almenis}%)` : ''}`
+                    : 'Sin modalidad registrada'}
+                </span>
+                {(() => {
+                  const montoAlmenis = calcularMontoAlmenis(cierre)
+                  return montoAlmenis !== null ? (
+                    <span className="text-emerald-700 font-medium">
+                      Almenis: {formatPesos(montoAlmenis)} · Profesional: {formatPesos(total_recaudado - montoAlmenis)}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 italic">cierre anterior a esta función</span>
+                  )
+                })()}
+              </div>
+            )
+          )}
         </div>
         {isAdmin && !editando && (
           <button
@@ -423,6 +497,14 @@ export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, o
   const totalAtendidos = resultado.cierre_por_profesional.reduce((s, c) => s + c.atendidos, 0)
   const totalRecaudado = resultado.cierre_por_profesional.reduce((s, c) => s + c.total_recaudado, 0)
 
+  // Split Almenis / profesional, solo sobre cierres con modalidad conocida —
+  // los cierres legados (sin modalidad) se cuentan aparte, nunca se asumen.
+  const conModalidad = resultado.cierre_por_profesional.filter(c => c.modalidad_pago)
+  const totalRecaudadoConModalidad = conModalidad.reduce((s, c) => s + c.total_recaudado, 0)
+  const totalIngresoAlmenis = conModalidad.reduce((s, c) => s + (calcularMontoAlmenis(c) ?? 0), 0)
+  const totalRetenidoProfesionales = totalRecaudadoConModalidad - totalIngresoAlmenis
+  const cierresSinModalidad = resultado.cierre_por_profesional.length - conModalidad.length
+
   return (
     <div className="space-y-6">
       {!soloParaProfesional && (
@@ -439,6 +521,39 @@ export function TablaCierre({ resultado, soloParaProfesional, isAdmin = false, o
             <p className="text-xs text-blue-200 uppercase tracking-wide mb-1 leading-tight">Recaudado</p>
             <p className="text-lg sm:text-3xl font-bold text-white">{formatPesos(totalRecaudado)}</p>
           </div>
+        </div>
+      )}
+
+      {isAdmin && !soloParaProfesional && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-emerald-700 uppercase tracking-wide font-medium mb-1 leading-tight">Ingreso real Almenis</p>
+            <p className="text-xl sm:text-2xl font-bold text-emerald-800">{formatPesos(totalIngresoAlmenis)}</p>
+          </div>
+          <div className="text-xs text-emerald-700 text-right">
+            <p>Profesionales retienen {formatPesos(totalRetenidoProfesionales)}</p>
+            {cierresSinModalidad > 0 && (
+              <p className="text-amber-600 mt-0.5">
+                ({cierresSinModalidad} cierre(s) sin modalidad registrada, no incluido(s))
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {resultado.profesionales_sin_match && resultado.profesionales_sin_match.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p className="text-sm font-medium text-amber-800 mb-2">
+            ⚠️ {resultado.profesionales_sin_match.length} profesional(es) no coincide(n) con ningún usuario registrado — se usó modalidad por defecto (porcentaje 30%):
+          </p>
+          <ul className="text-sm text-amber-700 space-y-0.5">
+            {resultado.profesionales_sin_match.map((nombre, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="w-1 h-1 rounded-full bg-amber-500 inline-block" />
+                {nombre}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

@@ -162,6 +162,8 @@ export function Dashboard({ usuario }: Props) {
         atendidos: actualizado.atendidos,
         total_recaudado: actualizado.total_recaudado,
         detalle_json: actualizado.detalle,
+        modalidad_pago: actualizado.modalidad_pago,
+        porcentaje_almenis: actualizado.porcentaje_almenis,
       })
       .eq('fecha', hoy)
       .eq('profesional_nombre', nombreProf)

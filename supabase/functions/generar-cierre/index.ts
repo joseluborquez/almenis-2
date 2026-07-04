@@ -163,6 +163,8 @@ function generarCierre(atenciones: AtencionAnonimizada[], catalogo: Tratamiento[
 interface Usuario {
   id: string
   profesional_nombre: string
+  modalidad_pago?: string
+  porcentaje_almenis?: number
 }
 
 function matchUsuarioPorNombre(pdfNombre: string, usuarios: Usuario[]): Usuario | null {
@@ -195,6 +197,22 @@ function matchUsuarioPorNombre(pdfNombre: string, usuarios: Usuario[]): Usuario 
 // ── Guardar en Supabase ──────────────────────────────────────────────────────
 
 async function guardarCierre(supabase: any, resultado: any, fecha: string, userId: string, usuarios: Usuario[]) {
+  // Snapshot de la modalidad de pago vigente al momento de generar el cierre:
+  // queda congelada aunque el profesional cambie su % más adelante.
+  const sinMatch: string[] = []
+  for (const cp of resultado.cierre_por_profesional) {
+    const match = matchUsuarioPorNombre(cp.profesional, usuarios)
+    if (match) {
+      cp.modalidad_pago = match.modalidad_pago ?? 'porcentaje'
+      cp.porcentaje_almenis = cp.modalidad_pago === 'porcentaje' ? (match.porcentaje_almenis ?? 30) : null
+    } else {
+      cp.modalidad_pago = 'porcentaje'
+      cp.porcentaje_almenis = 30
+      sinMatch.push(cp.profesional)
+    }
+  }
+  resultado.profesionales_sin_match = sinMatch
+
   const { data: cierreDiario, error: e1 } = await supabase
     .from('cierres_diarios')
     .upsert({
@@ -220,6 +238,8 @@ async function guardarCierre(supabase: any, resultado: any, fecha: string, userI
     total_recaudado: cp.total_recaudado,
     detalle_json: cp.detalle,
     fecha,
+    modalidad_pago: cp.modalidad_pago,
+    porcentaje_almenis: cp.porcentaje_almenis,
   }))
 
   const { error: e2 } = await supabase.from('cierres_profesional').insert(filas)
@@ -288,7 +308,7 @@ serve(async (req) => {
 
     const { data: usuarios } = await supabaseAdmin
       .from('usuarios')
-      .select('id, profesional_nombre')
+      .select('id, profesional_nombre, modalidad_pago, porcentaje_almenis')
       .eq('rol', 'profesional')
 
     // Canonizar el nombre de profesional contra los usuarios registrados antes
