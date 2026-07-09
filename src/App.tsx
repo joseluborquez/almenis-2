@@ -55,17 +55,22 @@ function App() {
       .catch(() => { if (activo) setErrorSesion(true) })
       .finally(() => { if (activo) setCargando(false) })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        try {
-          const u = await getUsuarioActual()
-          if (activo) setUsuario(u)
-        } catch {
-          if (activo) setErrorSesion(true)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Diferir las consultas fuera del callback: llamar a supabase-js
+      // directamente dentro de onAuthStateChange puede deadlockear
+      // (limitación documentada de la librería)
+      setTimeout(async () => {
+        if (session?.user) {
+          try {
+            const u = await getUsuarioActual()
+            if (activo) setUsuario(u)
+          } catch {
+            if (activo) setErrorSesion(true)
+          }
+        } else {
+          if (activo) setUsuario(null)
         }
-      } else {
-        setUsuario(null)
-      }
+      }, 0)
     })
 
     return () => { activo = false; subscription.unsubscribe() }

@@ -26,6 +26,19 @@ function palabrasClave(s: string): string[] {
     .filter(p => p.length > 2 && !STOPWORDS.has(p))
 }
 
+// Títulos profesionales: no cuentan como palabra en común al matchear nombres.
+// Sin este filtro, "Dra. Nueva Persona" (no registrada) compartía "dra." con
+// cualquier doctora registrada y sus atenciones se asignaban al usuario
+// equivocado — un profesional terminaba viendo montos de un colega.
+const TITULOS = new Set([
+  'dr', 'dr.', 'dra', 'dra.', 'ps', 'ps.', 'flga', 'flga.', 'flgo', 'flgo.',
+  't.o', 't.o.', 'klga', 'klga.', 'klgo', 'klgo.', 'mat', 'mat.', 'nut', 'nut.',
+])
+
+function palabrasNombreProfesional(s: string): string[] {
+  return palabrasClave(s).filter(p => !TITULOS.has(p))
+}
+
 interface Tratamiento {
   id: number
   nombre: string
@@ -40,36 +53,53 @@ function matchTratamiento(nombre: string, catalogo: Tratamiento[]): Tratamiento 
   const exacto = catalogo.find(t => normalizar(t.nombre) === norm)
   if (exacto) return exacto
 
-  // 2. Contiene (en cualquier dirección)
-  const contiene = catalogo.find(t => {
-    const tn = normalizar(t.nombre)
-    return tn.includes(norm) || norm.includes(tn)
-  })
-  if (contiene) return contiene
+  // 2a. El nombre del catálogo está contenido en el texto del PDF: se elige el
+  // más largo (más específico) para no resolver el empate al azar según el
+  // orden en que la BD devuelva las filas.
+  const dentroDelPdf = catalogo.filter(t => norm.includes(normalizar(t.nombre)))
+  if (dentroDelPdf.length > 0) {
+    return dentroDelPdf.reduce((a, b) =>
+      normalizar(b.nombre).length > normalizar(a.nombre).length ? b : a)
+  }
 
-  // 3. Overlap de palabras clave (≥2 coincidencias, o ≥50% si hay pocas palabras)
+  // 2b. El texto del PDF está contenido en nombres del catálogo. Si hay varios
+  // candidatos con valores distintos (ej: variante Fonasa vs Particular) el
+  // match es ambiguo: es más seguro dejarlo "sin registro" para revisión manual
+  // que adivinar un precio.
+  const contienenPdf = catalogo.filter(t => normalizar(t.nombre).includes(norm))
+  if (contienenPdf.length === 1) return contienenPdf[0]
+  if (contienenPdf.length > 1) {
+    const valores = new Set(contienenPdf.map(t => t.valor))
+    return valores.size === 1 ? contienenPdf[0] : null
+  }
+
+  // 3. Overlap de palabras clave (≥2 coincidencias, o 1 si el nombre tiene una
+  // sola palabra clave, ej: "vHIT"). Un empate de score entre tratamientos con
+  // valores distintos también es ambiguo → sin registro.
   const palabrasNombre = palabrasClave(nombre)
   if (palabrasNombre.length === 0) return null
 
   let mejorMatch: Tratamiento | null = null
   let mejorScore = 0
+  let empateConValorDistinto = false
 
   for (const t of catalogo) {
     const palabrasTrat = palabrasClave(t.nombre)
     const comunes = palabrasNombre.filter(p => palabrasTrat.includes(p))
-    const score = comunes.length / Math.max(palabrasNombre.length, palabrasTrat.length)
+    const califica = comunes.length >= 2 || (comunes.length === 1 && palabrasNombre.length === 1)
+    if (!califica) continue
 
-    if (comunes.length >= 2 && score > mejorScore) {
+    const score = comunes.length / Math.max(palabrasNombre.length, palabrasTrat.length)
+    if (score > mejorScore) {
       mejorScore = score
       mejorMatch = t
-    } else if (comunes.length === 1 && palabrasNombre.length === 1 && score > mejorScore) {
-      // Para tratamientos de 1 sola palabra clave (ej: "vHIT")
-      mejorScore = score
-      mejorMatch = t
+      empateConValorDistinto = false
+    } else if (score === mejorScore && mejorMatch && t.valor !== mejorMatch.valor) {
+      empateConValorDistinto = true
     }
   }
 
-  return mejorMatch
+  return empateConValorDistinto ? null : mejorMatch
 }
 
 // ── Generación del cierre ────────────────────────────────────────────────────
@@ -178,12 +208,14 @@ function matchUsuarioPorNombre(pdfNombre: string, usuarios: Usuario[]): Usuario 
     return un.includes(norm) || norm.includes(un)
   })
   if (contiene) return contiene
-  // 3. Overlap de palabras clave (≥1 palabra en común)
-  const palabrasNombre = palabrasClave(pdfNombre)
+  // 3. Overlap de palabras clave (≥1 palabra en común, excluyendo títulos como
+  // "Dra." o "Flga" que comparten varios profesionales)
+  const palabrasNombre = palabrasNombreProfesional(pdfNombre)
   let mejor: Usuario | null = null
   let mejorScore = 0
   for (const u of usuarios) {
-    const palabrasU = palabrasClave(u.profesional_nombre)
+    const palabrasU = palabrasNombreProfesional(u.profesional_nombre)
+    if (palabrasU.length === 0) continue
     const comunes = palabrasNombre.filter(p => palabrasU.includes(p))
     const score = comunes.length / Math.max(palabrasNombre.length, palabrasU.length)
     if (comunes.length >= 1 && score > mejorScore) {
@@ -227,20 +259,38 @@ async function guardarCierre(supabase: any, resultado: any, fecha: string, userI
 
   if (e1) throw new Error(`Error guardando cierre diario: ${e1.message}`)
 
-  await supabase.from('cierres_profesional').delete().eq('cierre_diario_id', cierreDiario.id)
+  // Al regenerar el cierre del día no se debe perder la aceptación/observación
+  // que el profesional ya registró, siempre que su detalle no haya cambiado.
+  const { data: previas } = await supabase
+    .from('cierres_profesional')
+    .select('profesional_nombre, aceptado, aceptado_at, comentario_profesional, detalle_json')
+    .eq('cierre_diario_id', cierreDiario.id)
 
-  const filas = resultado.cierre_por_profesional.map((cp: any) => ({
-    cierre_diario_id: cierreDiario.id,
-    profesional_nombre: cp.profesional,
-    profesional_id: matchUsuarioPorNombre(cp.profesional, usuarios)?.id ?? null,
-    total_atenciones: cp.total_atenciones,
-    atendidos: cp.atendidos,
-    total_recaudado: cp.total_recaudado,
-    detalle_json: cp.detalle,
-    fecha,
-    modalidad_pago: cp.modalidad_pago,
-    porcentaje_almenis: cp.porcentaje_almenis,
-  }))
+  const { error: eDelete } = await supabase
+    .from('cierres_profesional')
+    .delete()
+    .eq('cierre_diario_id', cierreDiario.id)
+  if (eDelete) throw new Error(`Error limpiando cierres previos: ${eDelete.message}`)
+
+  const filas = resultado.cierre_por_profesional.map((cp: any) => {
+    const previa = (previas ?? []).find((p: any) => p.profesional_nombre === cp.profesional)
+    const detalleIgual = previa && JSON.stringify(previa.detalle_json) === JSON.stringify(cp.detalle)
+    return {
+      cierre_diario_id: cierreDiario.id,
+      profesional_nombre: cp.profesional,
+      profesional_id: matchUsuarioPorNombre(cp.profesional, usuarios)?.id ?? null,
+      total_atenciones: cp.total_atenciones,
+      atendidos: cp.atendidos,
+      total_recaudado: cp.total_recaudado,
+      detalle_json: cp.detalle,
+      fecha,
+      modalidad_pago: cp.modalidad_pago,
+      porcentaje_almenis: cp.porcentaje_almenis,
+      aceptado: detalleIgual ? previa.aceptado : false,
+      aceptado_at: detalleIgual ? previa.aceptado_at : null,
+      comentario_profesional: detalleIgual ? previa.comentario_profesional : null,
+    }
+  })
 
   const { error: e2 } = await supabase.from('cierres_profesional').insert(filas)
   if (e2) throw new Error(`Error guardando cierres por profesional: ${e2.message}`)
@@ -288,11 +338,25 @@ serve(async (req) => {
 
     const { atenciones, fecha } = await req.json()
 
-    if (!atenciones || !fecha) {
-      return new Response(JSON.stringify({ error: 'Datos incompletos' }), {
+    if (!Array.isArray(atenciones) || atenciones.length === 0 || atenciones.length > 500) {
+      return new Response(JSON.stringify({ error: 'atenciones debe ser una lista de 1 a 500 elementos' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
+    if (typeof fecha !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return new Response(JSON.stringify({ error: 'fecha inválida (formato esperado YYYY-MM-DD)' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Sanitizar: solo los 4 campos esperados, siempre como string — lo que se
+    // guarda en datos_json no debe arrastrar campos extra del cliente
+    const atencionesLimpias: AtencionAnonimizada[] = atenciones.map((a: any) => ({
+      hora: String(a?.hora ?? ''),
+      tratamiento: String(a?.tratamiento ?? ''),
+      estado: String(a?.estado ?? ''),
+      profesional: String(a?.profesional ?? ''),
+    }))
 
     // Cargar catálogo de tratamientos desde Supabase (usando service role para evitar RLS)
     const supabaseAdmin = createClient(
@@ -315,7 +379,7 @@ serve(async (req) => {
     // de agrupar: el PDF a veces mezcla texto extra (comentarios/notas) en la
     // columna Box/Prof, lo que produce variantes del mismo nombre y termina
     // duplicando la tarjeta del profesional en el cierre.
-    const atencionesCanonizadas: AtencionAnonimizada[] = atenciones.map((a: AtencionAnonimizada) => {
+    const atencionesCanonizadas: AtencionAnonimizada[] = atencionesLimpias.map((a) => {
       const match = matchUsuarioPorNombre(a.profesional, usuarios ?? [])
       return match ? { ...a, profesional: match.profesional_nombre } : a
     })
@@ -329,7 +393,9 @@ serve(async (req) => {
     })
 
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    // El detalle queda en los logs de la función; al cliente solo un mensaje genérico
+    console.error('generar-cierre error:', error)
+    return new Response(JSON.stringify({ error: 'Error interno al generar el cierre. Revisa los logs de la función.' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

@@ -53,8 +53,8 @@ serve(async (req) => {
       if (!email || !password || !nombre_completo || !profesional_nombre) {
         return jsonError('Faltan datos: email, password, nombre_completo, profesional_nombre', 400)
       }
-      if (password.length < 6) {
-        return jsonError('La contraseña debe tener al menos 6 caracteres', 400)
+      if (password.length < 8) {
+        return jsonError('La contraseña debe tener al menos 8 caracteres', 400)
       }
 
       const { data: creado, error: eCrear } = await supabaseAdmin.auth.admin.createUser({
@@ -134,6 +134,8 @@ serve(async (req) => {
     return jsonError('Acción inválida', 400)
 
   } catch (error) {
-    return jsonError(error.message, 500)
+    // El detalle queda en los logs de la función; al cliente solo un mensaje genérico
+    console.error('gestionar-profesionales error:', error)
+    return jsonError('Error interno al gestionar profesionales. Revisa los logs de la función.', 500)
   }
 })

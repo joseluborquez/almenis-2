@@ -23,7 +23,7 @@ export function Subir({ usuario }: Props) {
   const navigate = useNavigate()
 
   const procesarArchivo = useCallback(async (file: File) => {
-    if (!file.name.endsWith('.pdf')) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('El archivo debe ser un PDF exportado desde Reservo')
       return
     }

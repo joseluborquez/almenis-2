@@ -1,21 +1,9 @@
 import type { AtencionAnonimizada } from '../types'
+import { hoyChile } from './fechas'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 type ColName = 'hora' | 'rut' | 'nombre' | 'tratamiento' | 'comentario' | 'estado' | 'contacto' | 'ficha' | 'profesional'
 type ColBounds = Record<ColName, { min: number; max: number }>
-
-// Fallback: posiciones hardcodeadas para el layout original de Reservo
-const COL_BOUNDARIES_DEFAULT: ColBounds = {
-  hora:        { min: 0,   max: 85  },
-  rut:         { min: 85,  max: 145 },
-  nombre:      { min: 145, max: 225 },
-  tratamiento: { min: 225, max: 345 },
-  comentario:  { min: 345, max: 400 },
-  estado:      { min: 400, max: 468 },
-  contacto:    { min: 468, max: 575 },
-  ficha:       { min: 575, max: 648 },
-  profesional: { min: 648, max: 900 },
-}
 
 // Textos exactos de los headers del PDF de Reservo y su columna correspondiente
 const HEADER_MAP: Array<[string, ColName]> = [
@@ -51,10 +39,17 @@ function detectarColumnas(items: Array<{ x: number; str: string }>): ColBounds {
     if (item) encontradas.push({ col, x: item.x })
   }
 
-  // Mínimo necesario: tratamiento, estado y profesional
+  // Mínimo necesario: tratamiento, estado y profesional. Sin los headers no se
+  // puede saber dónde está cada columna: adivinar con posiciones fijas arriesga
+  // que el nombre del paciente caiga en el rango de "tratamiento" y salga del
+  // computador, así que se aborta en vez de usar un fallback.
   const cols = new Set(encontradas.map(e => e.col))
   if (!cols.has('tratamiento') || !cols.has('estado') || !cols.has('profesional')) {
-    return COL_BOUNDARIES_DEFAULT
+    throw new Error(
+      'No se reconoce el formato del PDF: no se encontraron los encabezados de Reservo ' +
+      '(Descripción/Tratamiento, Estado, Box/Prof). Verifica que sea la Hoja de ' +
+      'Estadística Diaria exportada desde Reservo.'
+    )
   }
 
   encontradas.sort((a, b) => a.x - b.x)
@@ -136,7 +131,7 @@ export async function parsearPDF(file: File): Promise<{ atenciones: AtencionAnon
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
 
   const todosLosItems: Array<{ x: number; y: number; str: string }> = []
-  let fechaDetectada = new Date().toISOString().split('T')[0]
+  let fechaDetectada = hoyChile()
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum)
@@ -152,8 +147,10 @@ export async function parsearPDF(file: File): Promise<{ atenciones: AtencionAnon
       const texto = item.str.trim()
 
       if (texto.startsWith('Fecha:')) {
-        const match = texto.match(/(\d{4}-\d{2}-\d{2})/)
-        if (match) fechaDetectada = match[1]
+        const iso = texto.match(/(\d{4})-(\d{2})-(\d{2})/)
+        const latino = texto.match(/(\d{2})[-/](\d{2})[-/](\d{4})/)
+        if (iso) fechaDetectada = `${iso[1]}-${iso[2]}-${iso[3]}`
+        else if (latino) fechaDetectada = `${latino[3]}-${latino[2]}-${latino[1]}`
       }
 
       todosLosItems.push({ x, y: pageY, str: texto })

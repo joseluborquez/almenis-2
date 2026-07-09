@@ -90,17 +90,21 @@ export function Historico({ usuario }: Props) {
       },
     }
 
-    const { error: e1 } = await supabase
+    // .select() para verificar filas afectadas: un UPDATE sin match no es error
+    // y dejaría la UI mostrando un guardado que nunca ocurrió
+    const { data: d1, error: e1 } = await supabase
       .from('cierres_diarios')
       .update({
         total_recaudado: nuevoResultado.cierre_general.total_recaudado,
         datos_json: nuevoResultado,
       })
       .eq('fecha', fecha)
+      .select('id')
 
     if (e1) throw new Error(e1.message)
+    if (!d1 || d1.length === 0) throw new Error('No se encontró el cierre de esa fecha — recarga la página')
 
-    const { error: e2 } = await supabase
+    const { data: d2, error: e2 } = await supabase
       .from('cierres_profesional')
       .update({
         atendidos: actualizado.atendidos,
@@ -111,8 +115,10 @@ export function Historico({ usuario }: Props) {
       })
       .eq('fecha', fecha)
       .eq('profesional_nombre', nombreProf)
+      .select('id')
 
     if (e2) throw new Error(e2.message)
+    if (!d2 || d2.length === 0) throw new Error(`No se encontró el cierre de ${nombreProf} — recarga la página`)
 
     setSeleccionado(prev => prev ? { ...prev, datos_json: nuevoResultado, total_recaudado: nuevoResultado.cierre_general.total_recaudado } : prev)
     setRegistros(prev => prev.map(r => r.fecha === fecha
@@ -126,21 +132,28 @@ export function Historico({ usuario }: Props) {
     const fecha = seleccionado.fecha
     const ahora = new Date().toISOString()
 
-    const { error: e } = await supabase
+    // Solo tocar el comentario si el profesional escribió uno: aceptar sin
+    // comentario no debe borrar una observación previa
+    const cambios: Record<string, unknown> = { aceptado: true, aceptado_at: ahora }
+    if (comentario !== undefined) cambios.comentario_profesional = comentario
+
+    const { data, error: e } = await supabase
       .from('cierres_profesional')
-      .update({
-        aceptado: true,
-        aceptado_at: ahora,
-        comentario_profesional: comentario ?? null,
-      })
+      .update(cambios)
       .eq('fecha', fecha)
       .eq('profesional_id', usuario.id)
+      .select('id')
 
     if (e) throw new Error(e.message)
+    if (!data || data.length === 0) {
+      throw new Error('No se encontró tu cierre de esa fecha — puede haber sido regenerado. Recarga la página.')
+    }
 
-    setSeleccionado(prev => prev ? { ...prev, aceptado: true, aceptado_at: ahora, comentario_profesional: comentario ?? null } : prev)
+    setSeleccionado(prev => prev
+      ? { ...prev, aceptado: true, aceptado_at: ahora, comentario_profesional: comentario !== undefined ? comentario : prev.comentario_profesional }
+      : prev)
     setRegistros(prev => prev.map(r => r.fecha === fecha
-      ? { ...r, aceptado: true, aceptado_at: ahora, comentario_profesional: comentario ?? null }
+      ? { ...r, aceptado: true, aceptado_at: ahora, comentario_profesional: comentario !== undefined ? comentario : r.comentario_profesional }
       : r
     ))
   }

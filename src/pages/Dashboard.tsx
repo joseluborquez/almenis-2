@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase, supabaseConfigured } from '../lib/supabase'
+import { hoyChile } from '../lib/fechas'
 import { Layout } from '../components/Layout'
 import { TablaCierre } from '../components/TablaCierre'
 import type { Usuario, ResultadoCierre, CierreProfesional } from '../types'
@@ -9,7 +10,7 @@ interface Props {
 }
 
 const CIERRE_DEMO: ResultadoCierre = {
-  fecha: new Date().toISOString().split('T')[0],
+  fecha: hoyChile(),
   cierre_general: { total_atenciones: 8, atendidos: 5, total_recaudado: 220130 },
   cierre_por_profesional: [
     {
@@ -47,7 +48,7 @@ export function Dashboard({ usuario }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const hoy = new Date().toISOString().split('T')[0]
+  const hoy = hoyChile()
 
   useEffect(() => {
     if (!supabaseConfigured) {
@@ -110,7 +111,9 @@ export function Dashboard({ usuario }: Props) {
             fecha: hoy,
             cierre_general: { total_atenciones, atendidos, total_recaudado },
             cierre_por_profesional: [{
-              profesional: usuario.nombre_completo,
+              // Debe coincidir con soloParaProfesional (profesional_nombre) o
+              // TablaCierre filtra la tarjeta y el profesional ve todo vacío
+              profesional: usuario.profesional_nombre ?? usuario.nombre_completo,
               total_atenciones,
               atendidos,
               total_recaudado,
@@ -146,17 +149,21 @@ export function Dashboard({ usuario }: Props) {
       },
     }
 
-    const { error: e1 } = await supabase
+    // .select() para verificar filas afectadas: un UPDATE sin match no es error
+    // y dejaría la UI mostrando un guardado que nunca ocurrió
+    const { data: d1, error: e1 } = await supabase
       .from('cierres_diarios')
       .update({
         total_recaudado: nuevoResultado.cierre_general.total_recaudado,
         datos_json: nuevoResultado,
       })
       .eq('fecha', hoy)
+      .select('id')
 
     if (e1) throw new Error(e1.message)
+    if (!d1 || d1.length === 0) throw new Error('No se encontró el cierre del día — recarga la página')
 
-    const { error: e2 } = await supabase
+    const { data: d2, error: e2 } = await supabase
       .from('cierres_profesional')
       .update({
         atendidos: actualizado.atendidos,
@@ -167,8 +174,10 @@ export function Dashboard({ usuario }: Props) {
       })
       .eq('fecha', hoy)
       .eq('profesional_nombre', nombreProf)
+      .select('id')
 
     if (e2) throw new Error(e2.message)
+    if (!d2 || d2.length === 0) throw new Error(`No se encontró el cierre de ${nombreProf} — recarga la página`)
 
     setCierreHoy(nuevoResultado)
   }
@@ -176,17 +185,22 @@ export function Dashboard({ usuario }: Props) {
   const aceptarCierre = async (_profesional: string, comentario?: string) => {
     const ahora = new Date().toISOString()
 
-    const { error: e } = await supabase
+    // Solo tocar el comentario si el profesional escribió uno: aceptar sin
+    // comentario no debe borrar una observación previa
+    const cambios: Record<string, unknown> = { aceptado: true, aceptado_at: ahora }
+    if (comentario !== undefined) cambios.comentario_profesional = comentario
+
+    const { data, error: e } = await supabase
       .from('cierres_profesional')
-      .update({
-        aceptado: true,
-        aceptado_at: ahora,
-        comentario_profesional: comentario ?? null,
-      })
+      .update(cambios)
       .eq('fecha', hoy)
       .eq('profesional_id', usuario.id)
+      .select('id')
 
     if (e) throw new Error(e.message)
+    if (!data || data.length === 0) {
+      throw new Error('No se encontró tu cierre de hoy — puede haber sido regenerado. Recarga la página.')
+    }
 
     setCierreHoy(prev => prev ? {
       ...prev,
@@ -194,7 +208,7 @@ export function Dashboard({ usuario }: Props) {
         ...p,
         aceptado: true,
         aceptado_at: ahora,
-        comentario_profesional: comentario ?? null,
+        comentario_profesional: comentario !== undefined ? comentario : p.comentario_profesional,
       })),
     } : null)
   }

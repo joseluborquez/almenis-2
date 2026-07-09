@@ -358,9 +358,13 @@ export function Tratamientos({ usuario }: Props) {
       if (e) throw new Error(e.message)
       mostrarToast('Tratamiento actualizado')
     } else {
-      const newId = await siguienteId()
-      const { error: e } = await supabase.from('tratamientos').insert({ id: newId, nombre: t.nombre, categoria: t.categoria, valor: t.valor, gratuito: t.gratuito })
-      if (e) throw new Error(e.message)
+      // Reintenta si otro admin insertó el mismo id entre el cálculo y el insert
+      for (let intento = 0; ; intento++) {
+        const newId = await siguienteId()
+        const { error: e } = await supabase.from('tratamientos').insert({ id: newId, nombre: t.nombre, categoria: t.categoria, valor: t.valor, gratuito: t.gratuito })
+        if (!e) break
+        if (e.code !== '23505' || intento >= 3) throw new Error(e.message)
+      }
       mostrarToast('Tratamiento agregado')
     }
     setModalAgregar(false)

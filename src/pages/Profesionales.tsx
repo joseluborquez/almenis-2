@@ -186,7 +186,7 @@ function ModalAgregar({ onCrear, onCerrar }: ModalProps) {
                 type={mostrarPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
+                placeholder="Mínimo 8 caracteres"
                 autoComplete="new-password"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               />

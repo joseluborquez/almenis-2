@@ -160,6 +160,10 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
   const [detalle, setDetalle] = useState<DetalleItem[]>(cierre.detalle)
   const [modalidadPago, setModalidadPago] = useState<ModalidadPago>(cierre.modalidad_pago ?? 'porcentaje')
   const [porcentajeAlmenis, setPorcentajeAlmenis] = useState<number>(cierre.porcentaje_almenis ?? 30)
+  // En cierres legados (sin modalidad registrada) el select muestra un default,
+  // pero solo se persiste si el admin lo tocó explícitamente: guardar otro campo
+  // no debe estampar "porcentaje 30%" retroactivamente
+  const [modalidadTocada, setModalidadTocada] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -186,13 +190,14 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
     setGuardando(true)
     setError('')
     try {
+      const preservarLegado = cierre.modalidad_pago == null && !modalidadTocada
       await onGuardar({
         ...cierre,
         detalle,
         atendidos,
         total_recaudado,
-        modalidad_pago: modalidadPago,
-        porcentaje_almenis: modalidadPago === 'porcentaje' ? porcentajeAlmenis : null,
+        modalidad_pago: preservarLegado ? null : modalidadPago,
+        porcentaje_almenis: preservarLegado ? null : (modalidadPago === 'porcentaje' ? porcentajeAlmenis : null),
       })
       setEditando(false)
     } catch (e: any) {
@@ -206,6 +211,7 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
     setDetalle(cierre.detalle)
     setModalidadPago(cierre.modalidad_pago ?? 'porcentaje')
     setPorcentajeAlmenis(cierre.porcentaje_almenis ?? 30)
+    setModalidadTocada(false)
     setEditando(false)
     setError('')
   }
@@ -245,7 +251,7 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <select
                   value={modalidadPago}
-                  onChange={e => setModalidadPago(e.target.value as ModalidadPago)}
+                  onChange={e => { setModalidadTocada(true); setModalidadPago(e.target.value as ModalidadPago) }}
                   className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
                 >
                   <option value="porcentaje">Porcentaje</option>
@@ -259,7 +265,7 @@ function TarjetaProfesional({ cierre, isAdmin, catalogo, onGuardar, onAceptar }:
                       min={0}
                       max={100}
                       value={porcentajeAlmenis}
-                      onChange={e => setPorcentajeAlmenis(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                      onChange={e => { setModalidadTocada(true); setPorcentajeAlmenis(Math.min(100, Math.max(0, parseInt(e.target.value) || 0))) }}
                       className="w-16 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                     <span className="text-xs text-slate-500">% para Almenis</span>
