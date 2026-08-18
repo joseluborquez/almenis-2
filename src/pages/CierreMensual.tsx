@@ -329,6 +329,53 @@ function TarjetaProfesionalMensual({ fila, esPreview }: { fila: FilaMensualDispl
   )
 }
 
+// ── Banner de ingreso real Almenis (desglosado por modalidad) ───────────────
+
+function BannerIngresoAlmenis({ filas, totalRecaudadoMes }: { filas: FilaMensualDisplay[]; totalRecaudadoMes: number }) {
+  const conModalidad = filas.filter(f => f.modalidad_pago && f.monto_almenis != null)
+  const sumar = (arr: FilaMensualDisplay[]) => arr.reduce((s, f) => s + (f.monto_almenis ?? 0), 0)
+
+  const porcentaje = conModalidad.filter(f => f.modalidad_pago === 'porcentaje')
+  const arriendo = conModalidad.filter(f => f.modalidad_pago === 'arriendo')
+  const sueldoFijo = conModalidad.filter(f => f.modalidad_pago === 'sueldo_fijo')
+
+  const totalPorcentaje = sumar(porcentaje)
+  const totalArriendo = sumar(arriendo)
+  const totalSueldoFijo = sumar(sueldoFijo)
+  // Total Almenis del mes: la suma de lo cobrado por porcentaje a quienes
+  // trabajan así, más las mensualidades (arriendo) y el neto de sueldo fijo
+  // de quienes no trabajan a porcentaje.
+  const totalAlmenis = totalPorcentaje + totalArriendo + totalSueldoFijo
+
+  const totalRecaudadoConModalidad = conModalidad.reduce((s, f) => s + f.total_recaudado, 0)
+  const sinModalidad = filas.length - conModalidad.length
+
+  return (
+    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p className="text-xs text-emerald-700 uppercase tracking-wide font-medium mb-1">Total Almenis (mes)</p>
+        <p className="text-xl sm:text-2xl font-bold text-emerald-800">{formatPesos(totalAlmenis)}</p>
+        <div className="mt-2 space-y-0.5 text-xs text-emerald-700">
+          {porcentaje.length > 0 && (
+            <p>Por porcentaje ({porcentaje.length} profesional{porcentaje.length > 1 ? 'es' : ''}): {formatPesos(totalPorcentaje)}</p>
+          )}
+          {arriendo.length > 0 && (
+            <p>Por arriendo / mensualidad ({arriendo.length} profesional{arriendo.length > 1 ? 'es' : ''}): {formatPesos(totalArriendo)}</p>
+          )}
+          {sueldoFijo.length > 0 && (
+            <p>Por sueldo fijo, neto ({sueldoFijo.length} profesional{sueldoFijo.length > 1 ? 'es' : ''}): {formatPesos(totalSueldoFijo)}</p>
+          )}
+        </div>
+      </div>
+      <div className="text-xs text-emerald-700 text-right">
+        <p>Profesionales retienen {formatPesos(totalRecaudadoConModalidad - totalAlmenis)}</p>
+        <p>Total recaudado del mes: {formatPesos(totalRecaudadoMes)}</p>
+        {sinModalidad > 0 && <p className="text-amber-600 mt-0.5">({sinModalidad} profesional(es) sin modalidad/monto configurado)</p>}
+      </div>
+    </div>
+  )
+}
+
 // ── Sección de aceptación (vista profesional) ────────────────────────────────
 
 function SeccionAceptacionMensual({ fila, onAceptar }: { fila: CierreProfesionalMensual; onAceptar: (comentario?: string) => Promise<void> }) {
@@ -527,11 +574,7 @@ export function CierreMensual({ usuario }: Props) {
       : f) : prev)
   }
 
-  const conModalidad = (persistido ?? []).filter(f => f.modalidad_pago && f.monto_almenis != null)
-  const totalIngresoAlmenis = conModalidad.reduce((s, f) => s + (f.monto_almenis ?? 0), 0)
-  const totalRecaudadoConModalidad = conModalidad.reduce((s, f) => s + f.total_recaudado, 0)
   const totalRecaudado = (persistido ?? []).reduce((s, f) => s + f.total_recaudado, 0)
-  const sinModalidad = (persistido ?? []).length - conModalidad.length
 
   const hoy = periodoActual()
   const ANIOS = Array.from({ length: hoy.anio - 2023 }, (_, i) => hoy.anio - i) // desde 2024 (primer año con datos) hasta hoy
@@ -626,6 +669,10 @@ export function CierreMensual({ usuario }: Props) {
               onQuitarAjuste={quitarAjuste}
             />
 
+            {usuario.rol === 'admin' && (
+              <BannerIngresoAlmenis filas={preview.cierre_por_profesional} totalRecaudadoMes={preview.total_recaudado} />
+            )}
+
             <div className="space-y-4">
               {preview.cierre_por_profesional.map((p, i) => (
                 <TarjetaProfesionalMensual key={i} fila={p} esPreview />
@@ -637,17 +684,7 @@ export function CierreMensual({ usuario }: Props) {
         {!cargando && !preview && persistido && (
           <div className="space-y-4">
             {usuario.rol === 'admin' && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs text-emerald-700 uppercase tracking-wide font-medium mb-1">Ingreso real Almenis (mes)</p>
-                  <p className="text-xl sm:text-2xl font-bold text-emerald-800">{formatPesos(totalIngresoAlmenis)}</p>
-                </div>
-                <div className="text-xs text-emerald-700 text-right">
-                  <p>Profesionales retienen {formatPesos(totalRecaudadoConModalidad - totalIngresoAlmenis)}</p>
-                  <p>Total recaudado del mes: {formatPesos(totalRecaudado)}</p>
-                  {sinModalidad > 0 && <p className="text-amber-600 mt-0.5">({sinModalidad} profesional(es) sin modalidad configurada)</p>}
-                </div>
-              </div>
+              <BannerIngresoAlmenis filas={persistido} totalRecaudadoMes={totalRecaudado} />
             )}
 
             {persistido.length === 0 ? (
