@@ -133,21 +133,21 @@ function armarCierreMensual(
       fechasVistas.add(fila.fecha)
       const ajuste = ajustePorFecha.get(fila.fecha)
       if (ajuste) {
+        // El admin corrigió explícitamente el monto de este día: reemplaza
+        // el valor reportado en el cierre diario.
         dias.push({ fecha: fila.fecha, origen: 'ajuste_manual', monto: ajuste.monto, motivo: ajuste.motivo })
         total_recaudado += ajuste.monto
-        total_atenciones += fila.total_atenciones
-        atendidos += fila.atendidos
-      } else if (fila.aceptado) {
-        dias.push({ fecha: fila.fecha, origen: 'aceptado', monto: fila.total_recaudado })
-        total_recaudado += fila.total_recaudado
-        total_atenciones += fila.total_atenciones
-        atendidos += fila.atendidos
       } else {
-        // No aceptado por el profesional y sin ajuste manual: se muestra el
-        // monto de referencia pero NO se suma al total del mes (ni atenciones
-        // ni recaudado) — la fila completa queda sin verificar todavía.
-        dias.push({ fecha: fila.fecha, origen: 'no_aceptado', monto: fila.total_recaudado })
+        // Se suma igual aunque el profesional aún no lo haya aceptado — el
+        // monto reportado en el cierre diario es el mejor dato disponible.
+        // El origen 'no_aceptado' se conserva para seguir advirtiendo al
+        // admin (que puede corregir con un ajuste) y al profesional (que
+        // puede aceptarlo desde su perfil).
+        dias.push({ fecha: fila.fecha, origen: fila.aceptado ? 'aceptado' : 'no_aceptado', monto: fila.total_recaudado })
+        total_recaudado += fila.total_recaudado
       }
+      total_atenciones += fila.total_atenciones
+      atendidos += fila.atendidos
     }
 
     for (const a of ajustesProf) {

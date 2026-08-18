@@ -28,7 +28,7 @@ const MODALIDAD_LABELS: Record<ModalidadPago, string> = {
 
 const ORIGEN_LABELS: Record<DiaCierreMensual['origen'], string> = {
   aceptado: 'Aceptado',
-  no_aceptado: 'Pendiente (no cuenta en el total)',
+  no_aceptado: 'Pendiente de aceptación (igual incluido en el total)',
   ajuste_manual: 'Ajuste manual',
 }
 
@@ -185,7 +185,7 @@ function Warnings({ preview, ajustes, profesionales, onAgregarAjuste, onQuitarAj
       {preview.profesionales_pendientes.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <p className="text-sm font-medium text-amber-800 mb-2">
-            ⚠️ Cierres diarios aún no aceptados por el profesional — no se suman al total del mes salvo que agregues un ajuste manual:
+            ⚠️ Cierres diarios aún no aceptados por el profesional — ya están incluidos en el total con el monto reportado; agrega un ajuste manual solo si ese monto es incorrecto:
           </p>
           <ul className="text-sm text-amber-700 space-y-1.5">
             {preview.profesionales_pendientes.map(p => (
