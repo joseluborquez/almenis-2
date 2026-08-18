@@ -36,10 +36,6 @@ function formatPesos(valor: number): string {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(valor)
 }
 
-function pad2(n: number): string {
-  return String(n).padStart(2, '0')
-}
-
 function formatFecha(iso: string): string {
   return new Date(iso + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
 }
@@ -537,10 +533,12 @@ export function CierreMensual({ usuario }: Props) {
   const totalRecaudado = (persistido ?? []).reduce((s, f) => s + f.total_recaudado, 0)
   const sinModalidad = (persistido ?? []).length - conModalidad.length
 
-  const cambiarPeriodo = (valor: string) => {
-    const [anio, mes] = valor.split('-').map(Number)
-    if (anio && mes) setPeriodo({ anio, mes })
-  }
+  const hoy = periodoActual()
+  const ANIOS = Array.from({ length: hoy.anio - 2023 }, (_, i) => hoy.anio - i) // desde 2024 (primer año con datos) hasta hoy
+  const mesMaximo = periodo.anio === hoy.anio ? hoy.mes : 12
+
+  const cambiarMes = (mes: number) => setPeriodo(prev => ({ ...prev, mes }))
+  const cambiarAnio = (anio: number) => setPeriodo(prev => ({ anio, mes: anio === hoy.anio ? Math.min(prev.mes, hoy.mes) : prev.mes }))
 
   return (
     <Layout usuario={usuario}>
@@ -552,13 +550,26 @@ export function CierreMensual({ usuario }: Props) {
             </h1>
             <p className="text-slate-500 text-sm mt-0.5">{MESES[periodo.mes - 1]} {periodo.anio}</p>
           </div>
-          <input
-            type="month"
-            value={`${periodo.anio}-${pad2(periodo.mes)}`}
-            max={hoyChile().slice(0, 7)}
-            onChange={e => cambiarPeriodo(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+          <div className="flex gap-2">
+            <select
+              value={periodo.mes}
+              onChange={e => cambiarMes(Number(e.target.value))}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            >
+              {MESES.map((nombre, i) => (
+                <option key={nombre} value={i + 1} disabled={i + 1 > mesMaximo}>{nombre}</option>
+              ))}
+            </select>
+            <select
+              value={periodo.anio}
+              onChange={e => cambiarAnio(Number(e.target.value))}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            >
+              {ANIOS.map(anio => (
+                <option key={anio} value={anio}>{anio}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {error && (

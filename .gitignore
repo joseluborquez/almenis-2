@@ -18,6 +18,9 @@ dist-ssr
 *.local
 .vercel
 
+# Estado local de la Supabase CLI (link, cache)
+supabase/.temp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
