@@ -348,7 +348,8 @@ function BannerIngresoAlmenis({ filas, totalRecaudadoMes }: { filas: FilaMensual
   const totalAlmenis = totalPorcentaje + totalArriendo + totalSueldoFijo
 
   const totalRecaudadoConModalidad = conModalidad.reduce((s, f) => s + f.total_recaudado, 0)
-  const sinModalidad = filas.length - conModalidad.length
+  const sinConfigurar = filas.filter(f => !f.modalidad_pago || f.monto_almenis == null)
+  const recaudadoSinConfigurar = sinConfigurar.reduce((s, f) => s + f.total_recaudado, 0)
 
   return (
     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex flex-wrap items-start justify-between gap-4">
@@ -370,8 +371,32 @@ function BannerIngresoAlmenis({ filas, totalRecaudadoMes }: { filas: FilaMensual
       <div className="text-xs text-emerald-700 text-right">
         <p>Profesionales retienen {formatPesos(totalRecaudadoConModalidad - totalAlmenis)}</p>
         <p>Total recaudado del mes: {formatPesos(totalRecaudadoMes)}</p>
-        {sinModalidad > 0 && <p className="text-amber-600 mt-0.5">({sinModalidad} profesional(es) sin modalidad/monto configurado)</p>}
+        {sinConfigurar.length > 0 && (
+          <p className="text-amber-600 mt-0.5">
+            ⚠ {formatPesos(recaudadoSinConfigurar)} recaudados por {sinConfigurar.length} profesional(es) sin modalidad o monto configurado — no entran en ninguno de los totales de arriba
+          </p>
+        )}
       </div>
+
+      {sinConfigurar.length > 0 && (
+        <div className="w-full pt-2 border-t border-emerald-200">
+          <p className="text-xs text-amber-700 font-medium mb-1">Configura su modalidad/monto en Profesionales para que cuenten:</p>
+          <ul className="text-xs text-amber-700 space-y-0.5">
+            {sinConfigurar.map((f, i) => (
+              <li key={i}>
+                {f.profesional_nombre}
+                {' — '}
+                {!f.profesional_id
+                  ? 'no coincide con ningún usuario registrado'
+                  : !f.modalidad_pago
+                  ? 'sin modalidad de pago'
+                  : `falta el monto de ${f.modalidad_pago === 'arriendo' ? 'arriendo' : 'sueldo fijo'}`}
+                {' ('}{formatPesos(f.total_recaudado)}{')'}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
