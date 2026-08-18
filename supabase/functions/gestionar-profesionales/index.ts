@@ -66,6 +66,21 @@ serve(async (req) => {
 
       if (eCrear) return jsonError(eCrear.message, 400)
 
+      // Si el profesional ya trabajó antes de tener cuenta (el nombre del PDF
+      // ya aparecía en cierres pasados pero no matcheaba a ningún usuario),
+      // esos días quedaron con profesional_id null — invisibles para él en su
+      // propio histórico y excluidos del agrupamiento por profesional en el
+      // cierre mensual. Se vinculan retroactivamente por nombre exacto (nunca
+      // fuzzy, para no arriesgar asignarle el historial de otra persona).
+      // Los recién creados quedan con los defaults de columna (porcentaje 30%).
+      const { error: eBackfill } = await supabaseAdmin
+        .from('cierres_profesional')
+        .update({ profesional_id: creado.user.id, modalidad_pago: 'porcentaje', porcentaje_almenis: 30 })
+        .is('profesional_id', null)
+        .eq('profesional_nombre', profesional_nombre)
+
+      if (eBackfill) console.error('gestionar-profesionales: fallo el backfill retroactivo:', eBackfill)
+
       return new Response(JSON.stringify({ id: creado.user.id, email: creado.user.email }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
