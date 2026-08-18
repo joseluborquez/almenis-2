@@ -19,12 +19,14 @@ export function Layout({ usuario, children }: Props) {
   const navAdmin = [
     { label: 'Subir PDF', path: '/subir', icon: '↑' },
     { label: 'Cierre de Hoy', path: '/dashboard', icon: '◎' },
+    { label: 'Cierre Mensual', path: '/cierre-mensual', icon: '▦' },
     { label: 'Histórico', path: '/historico', icon: '☰' },
     { label: 'Tratamientos', path: '/tratamientos', icon: '♦' },
     { label: 'Profesionales', path: '/profesionales', icon: '👤' },
   ]
   const navProfesional = [
     { label: 'Mi Cierre', path: '/dashboard', icon: '◎' },
+    { label: 'Mi Cierre Mensual', path: '/cierre-mensual', icon: '▦' },
     { label: 'Histórico', path: '/historico', icon: '☰' },
   ]
   const navItems = usuario.rol === 'admin' ? navAdmin : navProfesional

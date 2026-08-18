@@ -6,6 +6,7 @@ import { Login } from './pages/Login'
 import { Subir } from './pages/Subir'
 import { Dashboard } from './pages/Dashboard'
 import { Historico } from './pages/Historico'
+import { CierreMensual } from './pages/CierreMensual'
 import { Tratamientos } from './pages/Tratamientos'
 import { Profesionales } from './pages/Profesionales'
 import type { Usuario } from './types'
@@ -141,6 +142,13 @@ function App() {
           element={
             !usuarioEfectivo ? <Navigate to="/login" replace /> :
             <Historico usuario={usuarioEfectivo} />
+          }
+        />
+        <Route
+          path="/cierre-mensual"
+          element={
+            !usuarioEfectivo ? <Navigate to="/login" replace /> :
+            <CierreMensual usuario={usuarioEfectivo} />
           }
         />
         <Route

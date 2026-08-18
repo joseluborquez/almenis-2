@@ -62,6 +62,56 @@ export interface Usuario {
   profesional_nombre: string | null
 }
 
+export interface DiaCierreMensual {
+  fecha: string
+  origen: 'aceptado' | 'no_aceptado' | 'ajuste_manual'
+  monto: number
+  motivo?: string | null
+}
+
+// Campos que ya calcula la Edge Function en modo preview (sin persistir).
+export interface CierreProfesionalMensualPreview {
+  profesional_nombre: string
+  profesional_id: string | null
+  total_atenciones: number
+  atendidos: number
+  total_recaudado: number
+  modalidad_pago: ModalidadPago | null
+  porcentaje_almenis: number | null
+  monto_arriendo: number | null
+  monto_sueldo_fijo: number | null
+  monto_almenis: number | null
+  monto_profesional: number | null
+  dias_json: DiaCierreMensual[]
+}
+
+export interface CierreProfesionalMensual extends CierreProfesionalMensualPreview {
+  id: string
+  cierre_mensual_id: string
+  anio: number
+  mes: number
+  aceptado: boolean
+  aceptado_at: string | null
+  comentario_profesional: string | null
+}
+
+export interface CierreMensual {
+  id: string
+  anio: number
+  mes: number
+  dias_esperados: number
+  dias_con_cierre: number
+  dias_aceptados: number
+  total_atenciones: number
+  total_recaudado: number
+  datos_json: {
+    cierre_por_profesional: CierreProfesionalMensual[]
+    dias_faltantes: string[]
+    profesionales_pendientes: { profesional_nombre: string; fechas: string[] }[]
+  }
+  created_at: string
+}
+
 export interface CierreDiario {
   id: string
   fecha: string

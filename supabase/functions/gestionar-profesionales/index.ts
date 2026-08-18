@@ -72,7 +72,7 @@ serve(async (req) => {
     }
 
     if (body.accion === 'actualizar_modalidad') {
-      const { id, modalidad_pago, porcentaje_almenis } = body
+      const { id, modalidad_pago, porcentaje_almenis, monto_arriendo, monto_sueldo_fijo } = body
 
       const MODALIDADES = ['porcentaje', 'arriendo', 'sueldo_fijo']
       if (!id || !MODALIDADES.includes(modalidad_pago)) {
@@ -81,6 +81,16 @@ serve(async (req) => {
       if (modalidad_pago === 'porcentaje') {
         if (!Number.isInteger(porcentaje_almenis) || porcentaje_almenis < 0 || porcentaje_almenis > 100) {
           return jsonError('porcentaje_almenis debe ser un entero entre 0 y 100', 400)
+        }
+      }
+      if (modalidad_pago === 'arriendo') {
+        if (!Number.isInteger(monto_arriendo) || monto_arriendo < 0) {
+          return jsonError('monto_arriendo debe ser un entero mayor o igual a 0', 400)
+        }
+      }
+      if (modalidad_pago === 'sueldo_fijo') {
+        if (!Number.isInteger(monto_sueldo_fijo) || monto_sueldo_fijo < 0) {
+          return jsonError('monto_sueldo_fijo debe ser un entero mayor o igual a 0', 400)
         }
       }
 
@@ -99,6 +109,8 @@ serve(async (req) => {
         .update({
           modalidad_pago,
           porcentaje_almenis: modalidad_pago === 'porcentaje' ? porcentaje_almenis : 30,
+          monto_arriendo: modalidad_pago === 'arriendo' ? monto_arriendo : null,
+          monto_sueldo_fijo: modalidad_pago === 'sueldo_fijo' ? monto_sueldo_fijo : null,
         })
         .eq('id', id)
 

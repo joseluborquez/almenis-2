@@ -40,10 +40,12 @@ export async function eliminarProfesional(id: string): Promise<void> {
 export async function actualizarModalidad(
   id: string,
   modalidad_pago: ModalidadPago,
-  porcentaje_almenis: number
+  porcentaje_almenis: number,
+  monto_arriendo?: number,
+  monto_sueldo_fijo?: number
 ): Promise<void> {
   const { error } = await supabase.functions.invoke('gestionar-profesionales', {
-    body: { accion: 'actualizar_modalidad', id, modalidad_pago, porcentaje_almenis },
+    body: { accion: 'actualizar_modalidad', id, modalidad_pago, porcentaje_almenis, monto_arriendo, monto_sueldo_fijo },
   })
 
   if (error) throw new Error(await mensajeError(error, 'Error al actualizar la modalidad de pago'))

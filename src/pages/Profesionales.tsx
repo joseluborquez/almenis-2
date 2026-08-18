@@ -15,6 +15,8 @@ interface ProfesionalFila {
   profesional_nombre: string | null
   modalidad_pago: ModalidadPago
   porcentaje_almenis: number
+  monto_arriendo: number | null
+  monto_sueldo_fijo: number | null
 }
 
 // El teclado en español (autocorrección) y el autocompletado del navegador a
@@ -32,25 +34,39 @@ function limpiarEmail(valor: string): string {
 
 interface CeldaModalidadProps {
   profesional: ProfesionalFila
-  onActualizado: (modalidad_pago: ModalidadPago, porcentaje_almenis: number) => void
+  onActualizado: (
+    modalidad_pago: ModalidadPago,
+    porcentaje_almenis: number,
+    monto_arriendo: number,
+    monto_sueldo_fijo: number
+  ) => void
 }
 
 function CeldaModalidad({ profesional, onActualizado }: CeldaModalidadProps) {
   const [modalidad, setModalidad] = useState<ModalidadPago>(profesional.modalidad_pago)
   const [porcentaje, setPorcentaje] = useState(profesional.porcentaje_almenis)
+  const [montoArriendo, setMontoArriendo] = useState(profesional.monto_arriendo ?? 0)
+  const [montoSueldoFijo, setMontoSueldoFijo] = useState(profesional.monto_sueldo_fijo ?? 0)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
-  const guardar = async (nuevaModalidad: ModalidadPago, nuevoPorcentaje: number) => {
+  const guardar = async (
+    nuevaModalidad: ModalidadPago,
+    nuevoPorcentaje: number,
+    nuevoMontoArriendo: number,
+    nuevoMontoSueldoFijo: number
+  ) => {
     setGuardando(true)
     setError('')
     try {
-      await actualizarModalidad(profesional.id, nuevaModalidad, nuevoPorcentaje)
-      onActualizado(nuevaModalidad, nuevoPorcentaje)
+      await actualizarModalidad(profesional.id, nuevaModalidad, nuevoPorcentaje, nuevoMontoArriendo, nuevoMontoSueldoFijo)
+      onActualizado(nuevaModalidad, nuevoPorcentaje, nuevoMontoArriendo, nuevoMontoSueldoFijo)
     } catch (err: any) {
       setError(err.message)
       setModalidad(profesional.modalidad_pago)
       setPorcentaje(profesional.porcentaje_almenis)
+      setMontoArriendo(profesional.monto_arriendo ?? 0)
+      setMontoSueldoFijo(profesional.monto_sueldo_fijo ?? 0)
     } finally {
       setGuardando(false)
     }
@@ -58,12 +74,17 @@ function CeldaModalidad({ profesional, onActualizado }: CeldaModalidadProps) {
 
   const handleModalidadChange = (nueva: ModalidadPago) => {
     setModalidad(nueva)
-    guardar(nueva, porcentaje)
+    guardar(nueva, porcentaje, montoArriendo, montoSueldoFijo)
   }
 
-  const handlePorcentajeBlur = () => {
-    if (porcentaje !== profesional.porcentaje_almenis || modalidad !== profesional.modalidad_pago) {
-      guardar(modalidad, porcentaje)
+  const handleBlur = () => {
+    if (
+      porcentaje !== profesional.porcentaje_almenis ||
+      modalidad !== profesional.modalidad_pago ||
+      montoArriendo !== (profesional.monto_arriendo ?? 0) ||
+      montoSueldoFijo !== (profesional.monto_sueldo_fijo ?? 0)
+    ) {
+      guardar(modalidad, porcentaje, montoArriendo, montoSueldoFijo)
     }
   }
 
@@ -87,9 +108,33 @@ function CeldaModalidad({ profesional, onActualizado }: CeldaModalidadProps) {
             max={100}
             value={porcentaje}
             onChange={e => setPorcentaje(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-            onBlur={handlePorcentajeBlur}
+            onBlur={handleBlur}
             disabled={guardando}
             className="w-14 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+          />
+        )}
+        {modalidad === 'arriendo' && (
+          <input
+            type="number"
+            min={0}
+            value={montoArriendo}
+            onChange={e => setMontoArriendo(Math.max(0, parseInt(e.target.value) || 0))}
+            onBlur={handleBlur}
+            disabled={guardando}
+            placeholder="$ arriendo/mes"
+            className="w-28 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+          />
+        )}
+        {modalidad === 'sueldo_fijo' && (
+          <input
+            type="number"
+            min={0}
+            value={montoSueldoFijo}
+            onChange={e => setMontoSueldoFijo(Math.max(0, parseInt(e.target.value) || 0))}
+            onBlur={handleBlur}
+            disabled={guardando}
+            placeholder="$ sueldo/mes"
+            className="w-28 text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
           />
         )}
       </div>
@@ -234,7 +279,7 @@ export function Profesionales({ usuario }: Props) {
     setError('')
     const { data, error: e } = await supabase
       .from('usuarios')
-      .select('id, email, nombre_completo, profesional_nombre, modalidad_pago, porcentaje_almenis')
+      .select('id, email, nombre_completo, profesional_nombre, modalidad_pago, porcentaje_almenis, monto_arriendo, monto_sueldo_fijo')
       .eq('rol', 'profesional')
       .order('nombre_completo')
     if (e) { setError(e.message); setLoading(false); return }
@@ -334,8 +379,10 @@ export function Profesionales({ usuario }: Props) {
                       <td className="px-3 py-2.5 hidden sm:table-cell">
                         <CeldaModalidad
                           profesional={p}
-                          onActualizado={(modalidad_pago, porcentaje_almenis) => {
-                            setProfesionales(prev => prev.map(x => x.id === p.id ? { ...x, modalidad_pago, porcentaje_almenis } : x))
+                          onActualizado={(modalidad_pago, porcentaje_almenis, monto_arriendo, monto_sueldo_fijo) => {
+                            setProfesionales(prev => prev.map(x => x.id === p.id
+                              ? { ...x, modalidad_pago, porcentaje_almenis, monto_arriendo: modalidad_pago === 'arriendo' ? monto_arriendo : null, monto_sueldo_fijo: modalidad_pago === 'sueldo_fijo' ? monto_sueldo_fijo : null }
+                              : x))
                             mostrarToast('Modalidad de pago actualizada')
                           }}
                         />
